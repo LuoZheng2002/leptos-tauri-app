@@ -1,4 +1,4 @@
-use crate::models::FileModel;
+use crate::models::{FileModel, FileTreeModel, TreeModel};
 use shared::{Algorithm, ExpandInfo, Model};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -16,17 +16,16 @@ fn parse_algorithm(algo: &str) -> Algorithm {
     algorithm
 }
 
-pub fn load_models(
-    file_path: &str,
-    root_name: &str,
-    counter: &AtomicU64,
-) -> Result<HashMap<u64, Model>, String> {
+pub fn load_models(    file_path: &str) -> Result<TreeModel, String> {
+    let counter = AtomicU64::new(0);
     // Reset counter
     counter.store(0, Ordering::Relaxed);
     let content = fs::read_to_string(file_path)
         .map_err(|e| format!("读取模型文件{:?}错误\n{}", file_path, e))?;
-    let models = serde_json::from_str::<Vec<FileModel>>(&content)
+    let file_tree_model = serde_json::from_str::<FileTreeModel>(&content)
         .map_err(|e| format!("解析模型文件{:?}错误\n{}", file_path, e))?;
+    let models = file_tree_model.data;
+    let root_name = file_tree_model.root_name;
     let models: HashMap<String, FileModel> = models
         .into_iter()
         .map(|model| (model.name.clone(), model))
@@ -35,7 +34,7 @@ pub fn load_models(
     let mut name_to_id = HashMap::<String, u64>::new();
     // 确保root_name在模型中
     models
-        .get(root_name)
+        .get(&root_name)
         .ok_or(format!("模型文件中没有根节点\"{}\"", root_name))?;
     // 将0赋值给root节点
     let root_id = counter.fetch_add(1, Ordering::Relaxed);
@@ -115,5 +114,5 @@ pub fn load_models(
             .expect(format!("model {} does not exist in ref count", model.name).as_str());
         model.ref_count = *count;
     });
-    Ok(models)
+    Ok(TreeModel{models, root_name, counter})
 }

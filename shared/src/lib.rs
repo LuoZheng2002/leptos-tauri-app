@@ -42,7 +42,6 @@ pub struct Model {
 #[allow(non_snake_case)]
 pub struct PrepareModelArgs {
     pub filePath: String,
-    pub rootName: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

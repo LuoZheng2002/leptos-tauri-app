@@ -8,13 +8,14 @@ use leptos::{ev::Event, prelude::*};
 use leptos_router::hooks::use_navigate;
 use serde_wasm_bindgen::{from_value, to_value};
 use shared::{LogArgs, MyResult, PrepareModelArgs};
+use tokio::sync::Mutex;
 use wasm_bindgen::JsValue;
 
 #[component]
 pub fn Home() -> impl IntoView {
     let (file_path, set_file_path) = signal(String::new());
-    let (root_name, set_root_name) = signal(String::new());
-    let leptos_context1 = use_context::<Arc<RwLock<LeptosContext>>>().unwrap();
+    // let (root_name, set_root_name) = signal(String::new());
+    let leptos_context1 = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
     let leptos_context2 = leptos_context1.clone();
     let navigate = use_navigate();
     // Function to open the file dialog and get the selected file path
@@ -34,8 +35,7 @@ pub fn Home() -> impl IntoView {
                 MyResult::Err(e) => {
                     // Handle error if needed
                     leptos_context
-                        .write()
-                        .unwrap()
+                        .lock().await
                         .err_msg
                         .set(format!("错误信息：{}", e));
                 }
@@ -46,7 +46,6 @@ pub fn Home() -> impl IntoView {
         let leptos_context = leptos_context2.clone();
         let prepare_model_args = PrepareModelArgs {
             filePath: file_path.get().to_string(),
-            rootName: root_name.get().to_string(),
         };
         let navigate = navigate.clone();
         spawn_local(async move {
@@ -60,8 +59,8 @@ pub fn Home() -> impl IntoView {
                 MyResult::Err(e) => {
                     // Handle error
                     leptos_context
-                        .write()
-                        .unwrap()
+                        .lock()
+                        .await
                         .err_msg
                         .set(format!("错误信息：{}", e));
                 }
@@ -81,15 +80,15 @@ pub fn Home() -> impl IntoView {
             <p class="text-gray-700 font-medium">
                 "选择的文件路径：" <span class="text-blue-600">{file_path}</span>
             </p>
-            <div class="flex items-center space-x-2">
-                <div class="inline-block">"根节点名称："</div>
-                <input
-                    type="text"
-                    bind:value=(root_name, set_root_name)
-                    placeholder="Type something"
-                    class="px-3 py-2 border rounded-lg shadow-sm focus:ring focus:ring-blue-300"
-                />
-            </div>
+            // <div class="flex items-center space-x-2">
+            //     <div class="inline-block">"根节点名称："</div>
+            //     <input
+            //         type="text"
+            //         bind:value=(root_name, set_root_name)
+            //         placeholder="Type something"
+            //         class="px-3 py-2 border rounded-lg shadow-sm focus:ring focus:ring-blue-300"
+            //     />
+            // </div>
 
             <button
                 class="px-4 py-2 text-white bg-green-500 rounded-lg hover:bg-green-600 transition"

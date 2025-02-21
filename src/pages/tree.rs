@@ -4,13 +4,14 @@ use crate::models::{LeptosContext, TreeNodeModel};
 use leptos::prelude::*;
 use serde_wasm_bindgen::from_value;
 use shared::{Algorithm, ExpandInfo, Model, MyResult};
+use tokio::sync::Mutex;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use wasm_bindgen::JsValue;
 
 #[component]
 pub fn Tree() -> impl IntoView {
-    let leptos_context = use_context::<Arc<RwLock<LeptosContext>>>().unwrap();
+    let leptos_context = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
     let curr_file_path_data = LocalResource::new(move || {
         let leptos_context = leptos_context.clone();
         async move {
@@ -20,8 +21,8 @@ pub fn Tree() -> impl IntoView {
                 MyResult::Ok(file_path) => file_path,
                 MyResult::Err(e) => {
                     leptos_context
-                        .write()
-                        .unwrap()
+                        .lock()
+                        .await
                         .err_msg
                         .set(format!("错误信息：{}", e));
                     "获取文件名错误".to_string()

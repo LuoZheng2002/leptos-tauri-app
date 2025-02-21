@@ -18,6 +18,7 @@ shared={path="shared"}
 futures = "0.3.31"
 leptos_icons = "0.5.0"
 icondata = "0.5.0"
+tokio = {version="1.43.0", features=["sync"]}
 
 [workspace]
 members = [ "shared","src-tauri"]

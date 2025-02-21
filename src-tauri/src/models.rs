@@ -11,6 +11,12 @@ pub struct FileModel {
     pub algorithm: String,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct FileTreeModel{
+    pub root_name: String,
+    pub data: Vec<FileModel>,
+}
+
 pub struct TreeModel {
     pub models: HashMap<u64, Model>,
     pub root_name: String,

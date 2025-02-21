@@ -13,6 +13,7 @@ use leptos_router::path;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::to_value;
 use shared::LogArgs;
+use tokio::sync::Mutex;
 use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 extern "C" {
@@ -38,7 +39,7 @@ struct GreetArgs<'a> {
 #[component]
 pub fn App() -> impl IntoView {
     let err_msg = RwSignal::new(String::new());
-    let leptos_context = Arc::new(RwLock::new(LeptosContext {
+    let leptos_context = Arc::new(Mutex::new(LeptosContext {
         models: Default::default(),
         err_msg,
     }));

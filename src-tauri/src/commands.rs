@@ -27,33 +27,23 @@ pub fn select_file(app: AppHandle) -> MyResult<String, String> {
 
 fn prepare_models_helper(
     file_path: &str,
-    root_name: &str,
     state: tauri::State<RwLock<TauriState>>,
 ) -> Result<(), String> {
     println!("prepare_models called");
     let mut state = state.write().unwrap();
-    let counter = AtomicU64::new(0);
-    let models = load_models(
-        file_path,
-        root_name,
-        &counter,
-    )?;
+    
+    let tree_model = load_models(        file_path    )?;
     state.curr_file_path = Some(file_path.to_string());
-    state.curr_tree_model = Some(TreeModel {
-        models,
-        root_name: root_name.to_string(),
-        counter,
-    });
+    state.curr_tree_model = Some(tree_model);
     Ok(())
 }
 
 #[tauri::command]
 pub fn prepare_models(
     file_path: &str,
-    root_name: &str,
     state: tauri::State<RwLock<TauriState>>,
 ) -> MyResult<(), String> {
-    let result = prepare_models_helper(file_path, root_name, state);
+    let result = prepare_models_helper(file_path, state);
     match result {
         Ok(_) => MyResult::Ok(()),
         Err(e) => MyResult::Err(e),
@@ -102,6 +92,15 @@ pub fn query_node(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<
 }
 
 fn request_rename_helper(id: u64, new_name: &str, state: tauri::State<RwLock<TauriState>>) -> Result<(), String> {
+    // 1. If has children, and name is duplicated, return error
+    // 2. If has no children, and name is duplicated, delete current model and replace other models' children
+    // 3. If name is not duplicated, rename
+    let mut state = state.write().unwrap();
+    let models = &mut state
+        .curr_tree_model
+        .as_mut()
+        .ok_or("模型未加载".to_string())?
+        .models;
     println!("Rust: request_rename called with id: {}, new_name: {}", id, new_name);
     Ok(())
 }
