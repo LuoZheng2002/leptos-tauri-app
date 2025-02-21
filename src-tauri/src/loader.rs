@@ -16,7 +16,7 @@ fn parse_algorithm(algo: &str) -> Algorithm {
     algorithm
 }
 
-pub fn load_models(    file_path: &str) -> Result<TreeModel, String> {
+pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
     let counter = AtomicU64::new(0);
     // Reset counter
     counter.store(0, Ordering::Relaxed);
@@ -114,5 +114,9 @@ pub fn load_models(    file_path: &str) -> Result<TreeModel, String> {
             .expect(format!("model {} does not exist in ref count", model.name).as_str());
         model.ref_count = *count;
     });
-    Ok(TreeModel{models, root_name, counter})
+    Ok(TreeModel {
+        models,
+        root_name,
+        counter,
+    })
 }

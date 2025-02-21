@@ -30,19 +30,15 @@ pub fn TreeNodeChildren(id: u64) -> impl IntoView {
             .unwrap_or_default()
     };
     console_log("Alive");
-    let on_algorithm_change = move |_|{
-
-    };
+    let on_algorithm_change = move |_| {};
     console_log("Alive");
-    let children = move ||{
+    let children = move || {
         expand_info()
             .map(|info| info.children.clone())
             .unwrap_or_default()
     };
     console_log("Alive");
-    let on_add = move |_|{
-    
-    };
+    let on_add = move |_| {};
     console_log("Still Alive");
     view! {
         {move || {

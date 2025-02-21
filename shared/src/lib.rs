@@ -66,3 +66,12 @@ pub struct RenameArgs {
     pub id: u64,
     pub new_name: String,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum RenameResponse {
+    RemoveSelfUpdateParents {
+        id_to_remove: u64,
+        parents: Vec<u64>,
+    },
+    RenameSelf(String),
+}

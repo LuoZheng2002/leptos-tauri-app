@@ -16,7 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             select_file,
-            prepare_models,            
+            prepare_models,
             query_file_path,
             query_node,
             request_rename,

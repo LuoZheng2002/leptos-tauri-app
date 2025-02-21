@@ -35,7 +35,8 @@ pub fn Home() -> impl IntoView {
                 MyResult::Err(e) => {
                     // Handle error if needed
                     leptos_context
-                        .lock().await
+                        .lock()
+                        .await
                         .err_msg
                         .set(format!("错误信息：{}", e));
                 }
@@ -50,7 +51,11 @@ pub fn Home() -> impl IntoView {
         let navigate = navigate.clone();
         spawn_local(async move {
             terminal_log("提交").await;
-            let result = invoke("prepare_models", to_value(&prepare_model_args.clone()).unwrap()).await;
+            let result = invoke(
+                "prepare_models",
+                to_value(&prepare_model_args.clone()).unwrap(),
+            )
+            .await;
             let result = from_value::<MyResult<(), String>>(result).unwrap();
             match result {
                 MyResult::Ok(_) => {

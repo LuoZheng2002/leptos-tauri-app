@@ -1,7 +1,8 @@
 use crate::helper::{suggest_new_name_add, suggest_new_name_dupe};
 use crate::loader::load_models;
 use crate::models::{TauriState, TreeModel};
-use shared::{Algorithm, Model, MyResult};
+use shared::{Algorithm, Model, MyResult, RenameResponse};
+use std::collections::HashSet;
 use std::sync::{atomic::AtomicU64, RwLock};
 use tauri::AppHandle;
 use tauri_plugin_dialog::{Dialog, DialogExt, FileDialogBuilder, FilePath};
@@ -31,8 +32,8 @@ fn prepare_models_helper(
 ) -> Result<(), String> {
     println!("prepare_models called");
     let mut state = state.write().unwrap();
-    
-    let tree_model = load_models(        file_path    )?;
+
+    let tree_model = load_models(file_path)?;
     state.curr_file_path = Some(file_path.to_string());
     state.curr_tree_model = Some(tree_model);
     Ok(())
@@ -53,7 +54,8 @@ pub fn prepare_models(
 fn query_file_path_helper(state: tauri::State<RwLock<TauriState>>) -> Result<String, String> {
     println!("query_file_path called");
     let state = state.read().unwrap();
-    state.curr_file_path
+    state
+        .curr_file_path
         .as_ref()
         .cloned()
         .ok_or("文件路径加载错误".to_string())
@@ -91,22 +93,66 @@ pub fn query_node(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<
     }
 }
 
-fn request_rename_helper(id: u64, new_name: &str, state: tauri::State<RwLock<TauriState>>) -> Result<(), String> {
+fn request_rename_helper(
+    id: u64,
+    new_name: &str,
+    state: tauri::State<RwLock<TauriState>>,
+) -> Result<RenameResponse, String> {
     // 1. If has children, and name is duplicated, return error
-    // 2. If has no children, and name is duplicated, delete current model and replace other models' children
-    // 3. If name is not duplicated, rename
+    // 2. If has no children, and name is duplicated, delete current model and replace other models' children -> (delete message, parent update messages)
+    // 3. If name is not duplicated, rename -> (rename message)
+    println!(
+        "Rust: request_rename called with id: {}, new_name: {}",
+        id, new_name
+    );
     let mut state = state.write().unwrap();
     let models = &mut state
         .curr_tree_model
         .as_mut()
         .ok_or("模型未加载".to_string())?
         .models;
-    println!("Rust: request_rename called with id: {}, new_name: {}", id, new_name);
-    Ok(())
+    let new_name_owner = models.iter().find(|(_, model)| model.name == new_name);
+    let new_name_owner_id = new_name_owner.map(|(id, _)| *id);
+    let model = models.get_mut(&id).ok_or(format!("未找到模型{}", id))?;
+    if model.name == new_name {
+        Err("重命名失败：新名称与旧名称相同".to_string())?;
+    }
+    if let Some(new_name_owner_id) = new_name_owner_id {
+        let mut parents_to_update = HashSet::new();
+        if model.expand_info.is_some() {
+            Err("重命名失败：新名称已存在".to_string())?;
+        } else {
+            // delete current model and update children of all other models
+            models.remove(&id);
+            for (model_id, model) in models.iter_mut() {
+                if let Some(expand_info) = model.expand_info.as_mut() {
+                    let children = &mut expand_info.children;
+                    children.iter_mut().for_each(|child_id| {
+                        if *child_id == id {
+                            *child_id = new_name_owner_id;
+                            // invalidate this parent at the frontend
+                            parents_to_update.insert(*model_id);
+                        }
+                    });
+                }
+            }
+        }
+        Ok(RenameResponse::RemoveSelfUpdateParents {
+            id_to_remove: id,
+            parents: parents_to_update.into_iter().collect(),
+        })
+    } else {
+        model.name = new_name.to_string();
+        Ok(RenameResponse::RenameSelf(new_name.to_string()))
+    }
 }
 
 #[tauri::command]
-pub fn request_rename(id: u64, new_name: &str, state: tauri::State<RwLock<TauriState>>) -> MyResult<(), String> {
+pub fn request_rename(
+    id: u64,
+    new_name: &str,
+    state: tauri::State<RwLock<TauriState>>,
+) -> MyResult<(), String> {
     let result = request_rename_helper(id, new_name, state);
     match result {
         Ok(_) => MyResult::Ok(()),
@@ -128,13 +174,19 @@ pub fn request_delete(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyRes
     }
 }
 
-fn request_add_helper(parent_id: u64, state: tauri::State<RwLock<TauriState>>) -> Result<u64, String> {
+fn request_add_helper(
+    parent_id: u64,
+    state: tauri::State<RwLock<TauriState>>,
+) -> Result<u64, String> {
     println!("Rust: request_add called with parent_id: {}", parent_id);
     Ok(0)
 }
 
 #[tauri::command]
-pub fn request_add(parent_id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<u64, String> {
+pub fn request_add(
+    parent_id: u64,
+    state: tauri::State<RwLock<TauriState>>,
+) -> MyResult<u64, String> {
     let result = request_add_helper(parent_id, state);
     match result {
         Ok(new_id) => MyResult::Ok(new_id),
@@ -142,13 +194,25 @@ pub fn request_add(parent_id: u64, state: tauri::State<RwLock<TauriState>>) -> M
     }
 }
 
-fn request_update_algorithm_helper(id: u64, algorithm: Algorithm, state: tauri::State<RwLock<TauriState>>) -> Result<(), String> {
-    println!("Rust: request_update_algorithm called with id: {}, algorithm: {}", id, algorithm.to_string());
+fn request_update_algorithm_helper(
+    id: u64,
+    algorithm: Algorithm,
+    state: tauri::State<RwLock<TauriState>>,
+) -> Result<(), String> {
+    println!(
+        "Rust: request_update_algorithm called with id: {}, algorithm: {}",
+        id,
+        algorithm.to_string()
+    );
     Ok(())
 }
 
 #[tauri::command]
-pub fn request_update_algorithm(id: u64, algorithm: Algorithm, state: tauri::State<RwLock<TauriState>>) -> MyResult<(), String> {
+pub fn request_update_algorithm(
+    id: u64,
+    algorithm: Algorithm,
+    state: tauri::State<RwLock<TauriState>>,
+) -> MyResult<(), String> {
     let result = request_update_algorithm_helper(id, algorithm, state);
     match result {
         Ok(_) => MyResult::Ok(()),
@@ -156,14 +220,19 @@ pub fn request_update_algorithm(id: u64, algorithm: Algorithm, state: tauri::Sta
     }
 }
 
-fn request_can_expand_toggling_helper(id: u64, state: tauri::State<RwLock<TauriState>>) -> Result<(), String> {
+fn request_can_expand_toggling_helper(
+    id: u64,
+    state: tauri::State<RwLock<TauriState>>,
+) -> Result<(), String> {
     println!("Rust: request_can_expand_toggling called with id: {}", id);
     Ok(())
 }
 
-
 #[tauri::command]
-pub fn request_can_expand_toggling(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<(), String> {
+pub fn request_can_expand_toggling(
+    id: u64,
+    state: tauri::State<RwLock<TauriState>>,
+) -> MyResult<(), String> {
     let result = request_can_expand_toggling_helper(id, state);
     match result {
         Ok(_) => MyResult::Ok(()),

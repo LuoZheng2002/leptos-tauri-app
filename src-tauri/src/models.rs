@@ -12,7 +12,7 @@ pub struct FileModel {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct FileTreeModel{
+pub struct FileTreeModel {
     pub root_name: String,
     pub data: Vec<FileModel>,
 }

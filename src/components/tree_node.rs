@@ -1,21 +1,32 @@
-use std::sync::{Arc, RwLock};
-use tokio::sync::Mutex;
-use crate::{app::invoke, models::LeptosContext};
-use leptos::{either::Either, ev::{ Event, KeyboardEvent, MouseEvent}, leptos_dom::logging::console_log, prelude::*, task::spawn_local};
+use crate::components::tree_node_children::TreeNodeChildren;
+use crate::{
+    app::{invoke, terminal_log},
+    models::LeptosContext,
+};
+use leptos::{
+    either::Either,
+    ev::{Event, KeyboardEvent, MouseEvent},
+    leptos_dom::logging::console_log,
+    prelude::*,
+    task::spawn_local,
+};
 use leptos_icons::Icon;
 use serde::de::value;
-use serde_wasm_bindgen::to_value;
-use shared::{IdArgs, RenameArgs};
-use crate::components::tree_node_children::TreeNodeChildren;
+use serde_wasm_bindgen::{from_value, to_value};
+use shared::{IdArgs, MyResult, RenameArgs, RenameResponse};
+use std::sync::{Arc, RwLock};
+use tokio::sync::Mutex;
 
 #[component]
 pub fn TreeNode(id: u64) -> impl IntoView {
-    let leptos_context = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
+    let leptos_context1 = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
+    let leptos_context2 = leptos_context1.clone();
+    let leptos_context3 = leptos_context1.clone();
     let (expanded, set_expanded) = signal(false);
     let (editing, set_editing) = signal(false);
     let (new_name, set_new_name) = signal(String::new());
     let tree_node_model = LocalResource::new(move || {
-        let context = leptos_context.clone();
+        let context = leptos_context1.clone();
         async move {
             console_log("Acquire lock in TreeNode");
             let mut context = context.lock().await;
@@ -24,78 +35,102 @@ pub fn TreeNode(id: u64) -> impl IntoView {
             model
         }
     });
-    let name = move ||{
+    let name = move || {
         tree_node_model
-        .get()
-        .as_deref()
-        .map(|model| model.name.get())
-        .unwrap_or("加载中".to_string())
+            .get()
+            .as_deref()
+            .map(|model| model.name.get())
+            .unwrap_or("加载中".to_string())
     };
-    let ref_count = move ||{
+    let ref_count = move || {
         tree_node_model
-        .get()
-        .as_deref()
-        .map(|model| model.ref_count.get())
-        .unwrap_or(114514)
+            .get()
+            .as_deref()
+            .map(|model| model.ref_count.get())
+            .unwrap_or(114514)
     };
-    let expand_info = move ||{
+    let expand_info = move || {
         tree_node_model
-        .get()
-        .as_deref()
-        .map(|model| model.expand_info.get())
-        .unwrap_or_default()
+            .get()
+            .as_deref()
+            .map(|model| model.expand_info.get())
+            .unwrap_or_default()
     };
-    let value = move ||{
+    let value = move || {
         tree_node_model
-        .get()
-        .as_deref()
-        .map(|model| model.value.get())
-        .unwrap_or_default()
+            .get()
+            .as_deref()
+            .map(|model| model.value.get())
+            .unwrap_or_default()
     };
-    let on_rename = move ||{
+    let on_rename1 = move || {
         set_editing.set(false);
         let new_name = new_name.get();
-        let rename_args = RenameArgs{id, new_name};
+        let rename_args = RenameArgs {id, new_name };
         let rename_args = to_value(&rename_args).unwrap();
-        spawn_local(async move{
+        let leptos_context = leptos_context2.clone();
+        spawn_local(async move {
             let result = invoke("request_rename", rename_args).await;
-            // handle result
-            todo!()
-        });        
+            let result = from_value::<MyResult<RenameResponse, String>>(result).unwrap();
+            match result {
+                MyResult::Ok(response) => {
+                    let mut context = leptos_context.lock().await;
+                    match response {
+                        RenameResponse::RemoveSelfUpdateParents {
+                            id_to_remove,
+                            parents,
+                        } => {
+                            context.models.remove(&id_to_remove);
+                            for parent in parents {
+                                if context.models.contains_key(&parent) {
+                                    context.update_model(parent).await;
+                                }
+                            }
+                        },
+                        RenameResponse::RenameSelf(new_name) => {
+                            let model = context.models.get_mut(&id).unwrap();
+                            model.name.set(new_name);
+                        }
+                    }
+                }
+                MyResult::Err(e) => {
+                    terminal_log(&e).await;
+                }
+            }
+        });
     };
-    let on_blur = move |_|{
-        on_rename();
+    let on_rename2 = on_rename1.clone();
+    let on_blur = move |_| {
+        on_rename1();
     };
-    let on_enter_down = move |ev: KeyboardEvent|{
-        if ev.key() == "Enter"{
-            on_rename();
+    let on_enter_down = move |ev: KeyboardEvent| {
+        if ev.key() == "Enter" {
+            on_rename2();
         }
     };
-    let on_delete = move |_|{
-        let id_args = IdArgs{id};
+    let on_delete = move |_| {
+        let id_args = IdArgs { id };
         let id_args = to_value(&id_args).unwrap();
-        spawn_local(async move{
+        spawn_local(async move {
             let result = invoke("request_delete", id_args).await;
             // process result
             todo!()
         });
     };
-    let has_children = move ||{
-        expand_info().is_some()
-    };
-    let toggle_expand = move |_|{
+    let has_children = move || expand_info().is_some();
+    let toggle_expand = move |_| {
         set_expanded.set(!expanded.get());
     };
-    let set_editing_true = move |_|{
+    let set_editing_true = move |_| {
         set_editing.set(true);
     };
     // let set_editing_false = move |_|{
     //     set_editing.set(false);
     // };
-    let request_can_expand_toggling = move |_|{
-        let id_args = IdArgs{id};
+    let request_can_expand_toggling = move |_| {
+        let id_args = IdArgs { id };
         let id_args = to_value(&id_args).unwrap();
-        spawn_local(async move{
+        spawn_local(async move {
             let result = invoke("request_can_expand_toggling", id_args).await;
             // process result
             todo!()
@@ -142,6 +177,8 @@ pub fn TreeNode(id: u64) -> impl IntoView {
             }} // {/* Editable Name */}
             {move || {
                 if editing.get() {
+                    let on_blur = on_blur.clone();
+                    let on_enter_down = on_enter_down.clone();
                     Either::Left(
                         view! {
                             <input

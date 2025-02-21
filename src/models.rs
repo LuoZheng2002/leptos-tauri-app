@@ -1,8 +1,8 @@
-use crate::app::invoke;
+use crate::app::{invoke, terminal_log};
 use futures::future::Either;
-use leptos::prelude::RwSignal;
+use leptos::prelude::{RwSignal, Set};
 use serde_wasm_bindgen::{from_value, to_value};
-use shared::{ExpandInfo, Model, MyResult, IdArgs};
+use shared::{ExpandInfo, IdArgs, Model, MyResult};
 use std::pin::pin;
 use std::{collections::HashMap, future::Future};
 
@@ -22,14 +22,14 @@ pub struct LeptosContext {
 
 impl LeptosContext {
     pub async fn get_model(&mut self, id: u64) -> TreeNodeModel {
-        let query_node_args = IdArgs { id };
-        let query_node_args = to_value(&query_node_args).unwrap();
+        let id_args = IdArgs { id };
+        let id_args = to_value(&id_args).unwrap();
         self.models
             .get(&id)
             .map_or_else(
                 || {
                     Either::Left(async {
-                        let result = invoke("query_node", query_node_args).await;
+                        let result = invoke("query_node", id_args).await;
                         let result = from_value::<MyResult<Model, String>>(result).unwrap();
                         match result {
                             MyResult::Ok(model) => TreeNodeModel {
@@ -41,6 +41,7 @@ impl LeptosContext {
                             },
                             MyResult::Err(e) => {
                                 // handle error
+                                terminal_log(&e).await;
                                 TreeNodeModel::default()
                             }
                         }
@@ -49,5 +50,24 @@ impl LeptosContext {
                 |model| Either::Right(async { model.clone() }),
             )
             .await
+    }
+    pub async fn update_model(&mut self, id: u64){
+        let model = self.models.get(&id).expect("Update model is only called when the model exists in the frontend");
+        let id_args = IdArgs { id };
+        let id_args = to_value(&id_args).unwrap();
+        let result = invoke("query_node", id_args).await;
+        let result = from_value::<MyResult<Model, String>>(result).unwrap();
+        match result {
+            MyResult::Ok(new_model) => {
+                model.name.set(new_model.name);
+                model.ref_count.set(new_model.ref_count);
+                model.expand_info.set(new_model.expand_info);
+                model.value.set(new_model.value);
+            }
+            MyResult::Err(e) => {
+                // handle error
+                terminal_log(&e).await;
+            }
+        }
     }
 }
