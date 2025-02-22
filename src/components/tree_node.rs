@@ -31,6 +31,7 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
         expand_signal,
         value,
     } = tree_node_model;
+    let name2 = name.clone();
 
     let (expanded, set_expanded) = signal(false);
     let (editing, set_editing) = signal(false);
@@ -39,6 +40,9 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
     let on_rename1 = move || {
         set_editing.set(false);
         let new_name = new_name.get();
+        if new_name == name2.get() {
+            return;
+        }
         let rename_args = RenameArgs {
             id,
             newName: new_name,
@@ -101,7 +105,7 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
     let has_children2 = has_children.clone();
     let has_children3 = has_children.clone();
     let has_children4 = has_children.clone();
-    
+
     let toggle_expand = move |_| {
         set_expanded.set(!expanded.get());
     };

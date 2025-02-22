@@ -54,9 +54,9 @@ pub fn Tree() -> impl IntoView {
         });
     };
 
-    let root_resource = LocalResource::new(move ||{
+    let root_resource = LocalResource::new(move || {
         let leptos_context = leptos_context3.clone();
-        async move{
+        async move {
             let mut context = leptos_context.lock().await;
             context.get_model(0).await
         }
@@ -87,7 +87,7 @@ pub fn Tree() -> impl IntoView {
                         view! {
                             <TreeNode tree_node_model=model/>
                         }
-                    })                    
+                    })
                 }}
             </Suspense>
         </div>

@@ -3,6 +3,7 @@ use crate::loader::load_models;
 use crate::models::{TauriState, TreeModel};
 use shared::{Algorithm, Model, MyResult, RenameResponse};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicU64, RwLock};
 use tauri::AppHandle;
 use tauri_plugin_dialog::{Dialog, DialogExt, FileDialogBuilder, FilePath};
@@ -195,19 +196,39 @@ pub fn request_delete(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyRes
 }
 
 fn request_add_helper(
-    parent_id: u64,
+    id: u64,
     state: tauri::State<RwLock<TauriState>>,
 ) -> Result<u64, String> {
-    println!("Rust: request_add called with parent_id: {}", parent_id);
-    Ok(0)
+    let mut state = state.write().unwrap();
+    let tree_model = state
+        .curr_tree_model
+        .as_mut()
+        .ok_or("添加错误：模型未加载".to_string())?;
+    let model = tree_model
+        .models
+        .get_mut(&id)
+        .ok_or(format!("添加错误：未找到模型{}", id))?;
+    let expand_info = model.expand_info.as_mut().ok_or("添加失败：模型无子节点".to_string())?;
+    let new_id = tree_model.counter.fetch_add(1, Ordering::Relaxed);
+    expand_info.children.push(new_id);
+    let new_name = suggest_new_name_add(&tree_model.models);
+    let new_model = Model {
+        id: new_id,
+        name: new_name,
+        ref_count: 1, // the only parent is the current model
+        expand_info: None,
+        value: None,
+    };
+    tree_model.models.insert(new_id, new_model);
+    Ok(id)
 }
 
 #[tauri::command]
 pub fn request_add(
-    parent_id: u64,
+    id: u64,
     state: tauri::State<RwLock<TauriState>>,
 ) -> MyResult<u64, String> {
-    let result = request_add_helper(parent_id, state);
+    let result = request_add_helper(id, state);
     match result {
         Ok(new_id) => MyResult::Ok(new_id),
         Err(e) => MyResult::Err(e),
