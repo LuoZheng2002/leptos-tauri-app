@@ -58,6 +58,26 @@ pub fn TreeNodeChildren(id: u64, expand_signal: ExpandSignal) -> impl IntoView {
     // }
     // );
 
+    let (children, set_children) = signal::<Vec<(u64, TreeNodeModel)>>(Default::default());
+
+    Effect::new(move || {
+        let children_ids = children_ids.get();
+        let leptos_context = leptos_context.clone();
+        spawn_local(async move {
+            let children = children_ids
+                .iter()
+                .map(|id| async {
+                    let mut context = leptos_context.lock().await;
+                    let model = context.get_model(*id).await;
+                    (*id, model)
+                })
+                .collect::<Vec<_>>();
+            // join all the futures
+            let children = join_all(children).await;
+            set_children.set(children);
+        });
+    });
+
     let (editing, set_editing) = signal(false);
 
     let algorithm_blink = LocalResource::new(||{
@@ -129,28 +149,16 @@ pub fn TreeNodeChildren(id: u64, expand_signal: ExpandSignal) -> impl IntoView {
                 </select>
 
             </div>
-            <Suspense fallback=move || view! { <div>"加载中"</div> }>
-            {
-                move||{
-                    let children = children_resource.get();
-                    console_log("Not suspending, attempting to load children");
-                    children.map(|children|{
-                        let children: Vec<(u64, TreeNodeModel)> = children.into_taken();
-                        console_log("children has value");
-                        console_log(&format!("children count: {}", children.len()));
-                        view!{    
-                            <For
-                                each=move||children.clone()
-                                key=|(id, _model)| *id
-                                children=move |(_id, model)| {
-                                    view! { <TreeNode tree_node_model=model /> }.into_any()
-                                }
-                            />
-                        }
-                    })
+
+            
+            <For
+                each=move||children.get()
+                key=|(id, _model)| *id
+                children=move |(_id, model)| {
+                    view! { <TreeNode tree_node_model=model /> }.into_any()
                 }
-            }
-            </Suspense>
+            />
+            
             <div class="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded-md">
                 <div class="w-4 h-4 inline-block" />
                 <button on:click=on_add class="text-blue-500 hover:text-blue-700">
