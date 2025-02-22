@@ -58,7 +58,7 @@ pub fn TreeNodeChildren(id: u64, expand_signal: ExpandSignal) -> impl IntoView {
     // }
     // );
 
-    let (children, set_children) = signal::<Vec<(u64, TreeNodeModel)>>(Default::default());
+    let (children, set_children) = signal::<Vec<(usize, TreeNodeModel)>>(Default::default());
 
     Effect::new(move || {
         let children_ids = children_ids.get();
@@ -68,12 +68,15 @@ pub fn TreeNodeChildren(id: u64, expand_signal: ExpandSignal) -> impl IntoView {
                 .iter()
                 .map(|id| async {
                     let mut context = leptos_context.lock().await;
-                    let model = context.get_model(*id).await;
-                    (*id, model)
+                   context.get_model(*id).await
                 })
                 .collect::<Vec<_>>();
             // join all the futures
-            let children = join_all(children).await;
+            let children = join_all(children).await
+                .into_iter()
+                .enumerate()
+                .collect::<Vec<_>>();
+            console_log(&format!("children count: {}", children.len()));
             set_children.set(children);
         });
     });
@@ -153,7 +156,7 @@ pub fn TreeNodeChildren(id: u64, expand_signal: ExpandSignal) -> impl IntoView {
             
             <For
                 each=move||children.get()
-                key=|(id, _model)| *id
+                key=|(index, _model)| *index
                 children=move |(_id, model)| {
                     view! { <TreeNode tree_node_model=model /> }.into_any()
                 }
