@@ -93,16 +93,19 @@ pub fn query_node(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<
     }
 }
 
-fn update_reference_count(models: &mut HashMap<u64, Model>){
-    let mut reference_counts =models.iter().map(|(id, _)|(*id, 0)).collect::<HashMap<u64, u64>>();
-    for (_, model) in models.iter(){
-        if let Some(expand_info) = &model.expand_info{
-            for child_id in expand_info.children.iter(){
+fn update_reference_count(models: &mut HashMap<u64, Model>) {
+    let mut reference_counts = models
+        .iter()
+        .map(|(id, _)| (*id, 0))
+        .collect::<HashMap<u64, u64>>();
+    for (_, model) in models.iter() {
+        if let Some(expand_info) = &model.expand_info {
+            for child_id in expand_info.children.iter() {
                 *reference_counts.get_mut(child_id).unwrap() += 1;
             }
         }
     }
-    for (id, reference_count) in reference_counts.iter(){
+    for (id, reference_count) in reference_counts.iter() {
         models.get_mut(id).unwrap().ref_count = *reference_count;
     }
 }
@@ -134,7 +137,7 @@ fn request_rename_helper(
     if let Some(new_name_owner_id) = new_name_owner_id {
         if model.expand_info.is_some() {
             Err("重命名失败：新名称已存在".to_string())?;
-        } 
+        }
         let mut ids_to_update = HashSet::new();
         // the new name owner needs to update because its reference count changes
         ids_to_update.insert(new_name_owner_id);
@@ -218,16 +221,20 @@ fn request_update_algorithm_helper(
 ) -> Result<u64, String> {
     println!(
         "Rust: request_update_algorithm called with id: {}, algorithm: {:?}",
-        id,
-        new_algorithm
+        id, new_algorithm
     );
     let mut state = state.write().unwrap();
-    let models = state.curr_tree_model.as_mut().ok_or("模型未加载".to_string())?;
-    let model = models.models.get_mut(&id).ok_or(format!("未找到模型{}", id))?;
+    let models = state
+        .curr_tree_model
+        .as_mut()
+        .ok_or("模型未加载".to_string())?;
+    let model = models
+        .models
+        .get_mut(&id)
+        .ok_or(format!("未找到模型{}", id))?;
     if let Some(expand_info) = model.expand_info.as_mut() {
         expand_info.algorithm = new_algorithm;
-    }
-    else{
+    } else {
         Err("更新算法失败：模型无子节点".to_string())?;
     }
     Ok(id)

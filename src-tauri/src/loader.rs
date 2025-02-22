@@ -4,7 +4,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-
 pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
     let counter = AtomicU64::new(0);
     // Reset counter
@@ -58,7 +57,10 @@ pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
                     .collect();
                 let algorithm_str = model.algorithm.clone();
                 let algorithm_enum = algorithm_str.parse().unwrap_or(Algorithm::None);
-                println!("字符串算法：{}, 枚举算法：{:?}", algorithm_str, algorithm_enum);
+                println!(
+                    "字符串算法：{}, 枚举算法：{:?}",
+                    algorithm_str, algorithm_enum
+                );
                 let model = Model {
                     id: *id,
                     name: model.name.clone(),

@@ -1,6 +1,6 @@
 // the frontend model is a hashmap of unique_id: model (id, name, ref_count, children_names, algorithm)
 use serde::{Deserialize, Serialize};
-use strum_macros::{EnumString, Display};
+use strum_macros::{Display, EnumString};
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, EnumString, Display)]
 pub enum Algorithm {
@@ -24,7 +24,6 @@ pub enum Algorithm {
     #[strum(serialize = "quzuixiaozhi")]
     Min,
 }
-
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct ExpandInfo {

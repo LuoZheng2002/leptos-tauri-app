@@ -1,4 +1,5 @@
 use crate::components::tree_node_children::TreeNodeChildren;
+use crate::models::TreeNodeModel;
 use crate::{
     app::{invoke, terminal_log},
     models::LeptosContext,
@@ -18,56 +19,30 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
 
 #[component]
-pub fn TreeNode(id: u64) -> impl IntoView {
+pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
     let leptos_context1 = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
     let leptos_context2 = leptos_context1.clone();
     let leptos_context3 = leptos_context1.clone();
-    
+
+    let TreeNodeModel {
+        id,
+        name,
+        ref_count,
+        expand_signal,
+        value,
+    } = tree_node_model;
+
     let (expanded, set_expanded) = signal(false);
     let (editing, set_editing) = signal(false);
     let (new_name, set_new_name) = signal(String::new());
-    let tree_node_model = LocalResource::new(move || {
-        let context = leptos_context1.clone();
-        async move {
-            console_log("Acquire lock in TreeNode");
-            let mut context = context.lock().await;
-            let model = context.get_model(id).await;
-            console_log("Release lock in TreeNode");
-            model
-        }
-    });
-    let name = move || {
-        tree_node_model
-            .get()
-            .as_deref()
-            .map(|model| model.name.get())
-            .unwrap_or("加载中".to_string())
-    };
-    let ref_count = move || {
-        tree_node_model
-            .get()
-            .as_deref()
-            .map(|model| model.ref_count.get())
-            .unwrap_or(114514)
-    };
-    let expand_info = move || {
-        tree_node_model
-            .get()
-            .as_deref()
-            .map(|model| model.expand_info.get())
-            .unwrap_or_default()
-    };
-    let value = move || {
-        tree_node_model
-            .get()
-            .as_deref()
-            .map(|model| model.value.get())
-            .unwrap_or_default()
-    };
+
     let on_rename1 = move || {
         set_editing.set(false);
         let new_name = new_name.get();
-        let rename_args = RenameArgs {id, newName: new_name };
+        let rename_args = RenameArgs {
+            id,
+            newName: new_name,
+        };
         let rename_args = to_value(&rename_args).unwrap();
         let leptos_context = leptos_context2.clone();
         spawn_local(async move {
@@ -88,7 +63,7 @@ pub fn TreeNode(id: u64) -> impl IntoView {
                                     context.update_model(parent).await;
                                 }
                             }
-                        },
+                        }
                         RenameResponse::RenameSelf(new_name) => {
                             console_log(&format!("rename id: {}", id));
                             context.update_model(id).await;
@@ -120,7 +95,13 @@ pub fn TreeNode(id: u64) -> impl IntoView {
             todo!()
         });
     };
-    let has_children = move || expand_info().is_some();
+    let expand_signal2 = expand_signal.clone();
+
+    let has_children = move || expand_signal.get().is_some();
+    let has_children2 = has_children.clone();
+    let has_children3 = has_children.clone();
+    let has_children4 = has_children.clone();
+    
     let toggle_expand = move |_| {
         set_expanded.set(!expanded.get());
     };
@@ -145,6 +126,7 @@ pub fn TreeNode(id: u64) -> impl IntoView {
         <div class="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded-md">
             // Expand/Collapse Button for Parent Nodes
             {move || {
+                // let has_children = has_children.clone();
                 if has_children() {
                     Either::Left(
                         view! {
@@ -172,7 +154,8 @@ pub fn TreeNode(id: u64) -> impl IntoView {
                 }
             }} // {/* Folder or File Icon */}
             {move || {
-                if has_children() {
+                // let has_children = has_children.clone();
+                if has_children2() {
                     view! { <Icon width="16" height="16" icon=icondata::LuFolder /> }
                 } else {
                     view! { <Icon width="16" height="16" icon=icondata::LuFile /> }
@@ -182,6 +165,7 @@ pub fn TreeNode(id: u64) -> impl IntoView {
                 if editing.get() {
                     let on_blur = on_blur.clone();
                     let on_enter_down = on_enter_down.clone();
+                    let name = name.clone();
                     Either::Left(
                         view! {
                             <input
@@ -196,6 +180,7 @@ pub fn TreeNode(id: u64) -> impl IntoView {
                         },
                     )
                 } else {
+                    let name = name.clone();
                     Either::Right(
                         view! {
                             <span on:dblclick=set_editing_true>{name}</span>
@@ -211,7 +196,7 @@ pub fn TreeNode(id: u64) -> impl IntoView {
                     on:click=request_can_expand_toggling
                 >
                     {move || {
-                        if has_children() {
+                        if has_children3() {
                             view! { <Icon width="16" height="16" icon=icondata::LuMinus /> }
                         } else {
                             view! { <Icon width="16" height="16" icon=icondata::LuPlus /> }
@@ -227,8 +212,10 @@ pub fn TreeNode(id: u64) -> impl IntoView {
         <div class="pl-4 border-l border-gray-300">
             // {/* Children Nodes (if expanded) */}
             {move || {
-                if has_children() && expanded.get() {
-                    view! { <TreeNodeChildren id=id /> }.into_any()
+                if has_children4() && expanded.get() {
+
+                    view! { <TreeNodeChildren id=id expand_signal=expand_signal2.get().unwrap() /> }
+                        .into_any()
                 } else {
                     view! {}.into_any()
                 }

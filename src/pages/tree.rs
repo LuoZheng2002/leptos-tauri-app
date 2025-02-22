@@ -2,11 +2,12 @@ use crate::app::invoke;
 use crate::components::tree_node::TreeNode;
 use crate::models::{LeptosContext, TreeNodeModel};
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
 use leptos_router::NavigateOptions;
+use send_wrapper::SendWrapper;
 use serde_wasm_bindgen::from_value;
 use shared::{Algorithm, ExpandInfo, Model, MyResult};
-use leptos::task::spawn_local;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
@@ -16,6 +17,7 @@ use wasm_bindgen::JsValue;
 pub fn Tree() -> impl IntoView {
     let leptos_context = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
     let leptos_context2 = leptos_context.clone();
+    let leptos_context3 = leptos_context.clone();
     let curr_file_path_data = LocalResource::new(move || {
         let leptos_context = leptos_context.clone();
         async move {
@@ -52,6 +54,14 @@ pub fn Tree() -> impl IntoView {
         });
     };
 
+    let root_resource = LocalResource::new(move ||{
+        let leptos_context = leptos_context3.clone();
+        async move{
+            let mut context = leptos_context.lock().await;
+            context.get_model(0).await
+        }
+    });
+
     view! {
         <div class="p-4">
             <div class="inline-block">
@@ -69,7 +79,17 @@ pub fn Tree() -> impl IntoView {
                 </button>
             </div>
             <h1 class="text-xl font-bold mb-4">"文件："{curr_file_path}</h1>
-            <TreeNode id=0 />
+            <Suspense>
+                {move || {
+                    let model = root_resource.get();
+                    model.map(|model|{
+                        let model = model.into_taken();
+                        view! {
+                            <TreeNode tree_node_model=model/>
+                        }
+                    })                    
+                }}
+            </Suspense>
         </div>
     }
 }
