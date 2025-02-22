@@ -66,7 +66,7 @@ pub fn TreeNode(id: u64) -> impl IntoView {
     let on_rename1 = move || {
         set_editing.set(false);
         let new_name = new_name.get();
-        let rename_args = RenameArgs {id, new_name };
+        let rename_args = RenameArgs {id, newName: new_name };
         let rename_args = to_value(&rename_args).unwrap();
         let leptos_context = leptos_context2.clone();
         spawn_local(async move {
@@ -76,20 +76,21 @@ pub fn TreeNode(id: u64) -> impl IntoView {
                 MyResult::Ok(response) => {
                     let mut context = leptos_context.lock().await;
                     match response {
-                        RenameResponse::RemoveSelfUpdateParents {
+                        RenameResponse::RemoveSelfUpdateRelated {
                             id_to_remove,
-                            parents,
+                            ids_to_update,
                         } => {
+                            console_log(&format!("remove id: {}", id_to_remove));
                             context.models.remove(&id_to_remove);
-                            for parent in parents {
+                            for parent in ids_to_update {
                                 if context.models.contains_key(&parent) {
                                     context.update_model(parent).await;
                                 }
                             }
                         },
                         RenameResponse::RenameSelf(new_name) => {
-                            let model = context.models.get_mut(&id).unwrap();
-                            model.name.set(new_name);
+                            console_log(&format!("rename id: {}", id));
+                            context.update_model(id).await;
                         }
                     }
                 }

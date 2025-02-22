@@ -2,8 +2,11 @@ use crate::app::invoke;
 use crate::components::tree_node::TreeNode;
 use crate::models::{LeptosContext, TreeNodeModel};
 use leptos::prelude::*;
+use leptos_router::hooks::use_navigate;
+use leptos_router::NavigateOptions;
 use serde_wasm_bindgen::from_value;
 use shared::{Algorithm, ExpandInfo, Model, MyResult};
+use leptos::task::spawn_local;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
@@ -12,6 +15,7 @@ use wasm_bindgen::JsValue;
 #[component]
 pub fn Tree() -> impl IntoView {
     let leptos_context = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
+    let leptos_context2 = leptos_context.clone();
     let curr_file_path_data = LocalResource::new(move || {
         let leptos_context = leptos_context.clone();
         async move {
@@ -36,9 +40,17 @@ pub fn Tree() -> impl IntoView {
             .as_deref()
             .map_or_else(|| "加载中".to_string(), |s| s.clone())
     };
-
+    let navigate = use_navigate();
     let on_save = move |_| {};
-    let on_back = move |_| {};
+    let on_back = move |_| {
+        let leptos_context = leptos_context2.clone();
+        let navigate = navigate.clone();
+        spawn_local(async move {
+            let mut leptos_context = leptos_context.lock().await;
+            leptos_context.models.clear();
+            navigate("/", Default::default());
+        });
+    };
 
     view! {
         <div class="p-4">

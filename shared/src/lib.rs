@@ -1,28 +1,30 @@
 // the frontend model is a hashmap of unique_id: model (id, name, ref_count, children_names, algorithm)
 use serde::{Deserialize, Serialize};
+use strum_macros::{EnumString, Display};
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, EnumString, Display)]
 pub enum Algorithm {
     #[default]
+    //#[strum(serialize = "请选择/缺失/错误")]
+    #[strum(serialize = "qingxuanze")]
     None,
+    // #[strum(serialize = "求和")]
+    #[strum(serialize = "qiuhe")]
     Sum,
+    // #[strum(serialize = "取乘积")]
+    #[strum(serialize = "quchengji")]
     Product,
+    // #[strum(serialize = "取平均")]
+    #[strum(serialize = "qupingjun")]
     Average,
+    // #[strum(serialize = "取最大值")]
+    #[strum(serialize = "quzuidazhi")]
     Max,
+    // #[strum(serialize = "取最小值")]
+    #[strum(serialize = "quzuixiaozhi")]
     Min,
 }
-impl Algorithm {
-    pub fn to_string(&self) -> String {
-        match self {
-            Algorithm::None => "请选择/错误/缺失".to_string(),
-            Algorithm::Sum => "求和".to_string(),
-            Algorithm::Product => "取乘积".to_string(),
-            Algorithm::Average => "取平均".to_string(),
-            Algorithm::Max => "取最大".to_string(),
-            Algorithm::Min => "取最小".to_string(),
-        }
-    }
-}
+
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct ExpandInfo {
@@ -64,14 +66,21 @@ pub struct IdArgs {
 #[allow(non_snake_case)]
 pub struct RenameArgs {
     pub id: u64,
-    pub new_name: String,
+    pub newName: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum RenameResponse {
-    RemoveSelfUpdateParents {
+    RemoveSelfUpdateRelated {
         id_to_remove: u64,
-        parents: Vec<u64>,
+        ids_to_update: Vec<u64>,
     },
     RenameSelf(String),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[allow(non_snake_case)]
+pub struct UpdateAlgorithmArgs {
+    pub id: u64,
+    pub newAlgorithm: Algorithm,
 }

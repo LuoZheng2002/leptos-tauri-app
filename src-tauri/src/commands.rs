@@ -2,7 +2,7 @@ use crate::helper::{suggest_new_name_add, suggest_new_name_dupe};
 use crate::loader::load_models;
 use crate::models::{TauriState, TreeModel};
 use shared::{Algorithm, Model, MyResult, RenameResponse};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{atomic::AtomicU64, RwLock};
 use tauri::AppHandle;
 use tauri_plugin_dialog::{Dialog, DialogExt, FileDialogBuilder, FilePath};
@@ -93,6 +93,20 @@ pub fn query_node(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<
     }
 }
 
+fn update_reference_count(models: &mut HashMap<u64, Model>){
+    let mut reference_counts =models.iter().map(|(id, _)|(*id, 0)).collect::<HashMap<u64, u64>>();
+    for (_, model) in models.iter(){
+        if let Some(expand_info) = &model.expand_info{
+            for child_id in expand_info.children.iter(){
+                *reference_counts.get_mut(child_id).unwrap() += 1;
+            }
+        }
+    }
+    for (id, reference_count) in reference_counts.iter(){
+        models.get_mut(id).unwrap().ref_count = *reference_count;
+    }
+}
+
 fn request_rename_helper(
     id: u64,
     new_name: &str,
@@ -118,28 +132,31 @@ fn request_rename_helper(
         Err("重命名失败：新名称与旧名称相同".to_string())?;
     }
     if let Some(new_name_owner_id) = new_name_owner_id {
-        let mut parents_to_update = HashSet::new();
         if model.expand_info.is_some() {
             Err("重命名失败：新名称已存在".to_string())?;
-        } else {
-            // delete current model and update children of all other models
-            models.remove(&id);
-            for (model_id, model) in models.iter_mut() {
-                if let Some(expand_info) = model.expand_info.as_mut() {
-                    let children = &mut expand_info.children;
-                    children.iter_mut().for_each(|child_id| {
-                        if *child_id == id {
-                            *child_id = new_name_owner_id;
-                            // invalidate this parent at the frontend
-                            parents_to_update.insert(*model_id);
-                        }
-                    });
-                }
+        } 
+        let mut ids_to_update = HashSet::new();
+        // the new name owner needs to update because its reference count changes
+        ids_to_update.insert(new_name_owner_id);
+        // delete current model and update children of all other models
+        models.remove(&id);
+        for (model_id, model) in models.iter_mut() {
+            if let Some(expand_info) = model.expand_info.as_mut() {
+                let children = &mut expand_info.children;
+                children.iter_mut().for_each(|child_id| {
+                    if *child_id == id {
+                        *child_id = new_name_owner_id;
+                        // invalidate this parent at the frontend
+                        ids_to_update.insert(*model_id);
+                    }
+                });
             }
         }
-        Ok(RenameResponse::RemoveSelfUpdateParents {
+        // update reference count
+        update_reference_count(models);
+        Ok(RenameResponse::RemoveSelfUpdateRelated {
             id_to_remove: id,
-            parents: parents_to_update.into_iter().collect(),
+            ids_to_update: ids_to_update.into_iter().collect(),
         })
     } else {
         model.name = new_name.to_string();
@@ -152,10 +169,10 @@ pub fn request_rename(
     id: u64,
     new_name: &str,
     state: tauri::State<RwLock<TauriState>>,
-) -> MyResult<(), String> {
+) -> MyResult<RenameResponse, String> {
     let result = request_rename_helper(id, new_name, state);
     match result {
-        Ok(_) => MyResult::Ok(()),
+        Ok(response) => MyResult::Ok(response),
         Err(e) => MyResult::Err(e),
     }
 }

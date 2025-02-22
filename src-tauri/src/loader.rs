@@ -4,17 +4,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-fn parse_algorithm(algo: &str) -> Algorithm {
-    let algorithm = match algo {
-        "求和" => Algorithm::Sum,
-        "求乘积" => Algorithm::Product,
-        "求平均" => Algorithm::Average,
-        "求最大" => Algorithm::Max,
-        "求最小" => Algorithm::Min,
-        _ => Algorithm::None,
-    };
-    algorithm
-}
 
 pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
     let counter = AtomicU64::new(0);
@@ -67,12 +56,15 @@ pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
                             .clone()
                     })
                     .collect();
+                let algorithm_str = model.algorithm.clone();
+                let algorithm_enum = algorithm_str.parse().unwrap_or(Algorithm::None);
+                println!("字符串算法：{}, 枚举算法：{:?}", algorithm_str, algorithm_enum);
                 let model = Model {
                     id: *id,
                     name: model.name.clone(),
                     ref_count: 0,
                     expand_info: Some(ExpandInfo {
-                        algorithm: parse_algorithm(&model.algorithm),
+                        algorithm: model.algorithm.parse().unwrap_or(Algorithm::None),
                         children,
                     }),
                     value: None,

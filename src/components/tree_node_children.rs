@@ -1,16 +1,17 @@
-use std::sync::{Arc, RwLock};
+use std::{str::FromStr, sync::{Arc, RwLock}};
 
-use leptos::{either::Either, leptos_dom::logging::console_log, prelude::*};
+use leptos::{either::Either, ev::Event, leptos_dom::logging::console_log, prelude::*, task::spawn_local};
 use leptos_icons::Icon;
-use shared::Algorithm;
+use serde_wasm_bindgen::{from_value, to_value};
+use shared::{Algorithm, MyResult, UpdateAlgorithmArgs};
 use tokio::sync::Mutex;
 
-use crate::{app::terminal_log, components::tree_node::TreeNode, models::LeptosContext};
+use crate::{app::{invoke, terminal_log}, components::tree_node::TreeNode, models::LeptosContext};
 
 #[component]
 pub fn TreeNodeChildren(id: u64) -> impl IntoView {
-    console_log("TreeNodeChildren called");
     let leptos_context = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
+    let leptos_context2 = leptos_context.clone();
     let tree_node_model = LocalResource::new(move || {
         let context = leptos_context.clone();
         async move {
@@ -21,7 +22,6 @@ pub fn TreeNodeChildren(id: u64) -> impl IntoView {
             model
         }
     });
-    console_log("Alive");
     let expand_info = move || {
         tree_node_model
             .get()
@@ -29,19 +29,46 @@ pub fn TreeNodeChildren(id: u64) -> impl IntoView {
             .map(|model| model.expand_info.get())
             .unwrap_or_default()
     };
-    console_log("Alive");
-    let on_algorithm_change = move |_| {};
-    console_log("Alive");
+    let on_algorithm_change = move |ev: Event| {
+        let algorithm_str = event_target_value(&ev);
+        let algorithm = Algorithm::from_str(&algorithm_str).unwrap();
+        let leptos_context = leptos_context2.clone();
+        spawn_local(async move{
+            let update_algorithm_args = UpdateAlgorithmArgs {
+                id,
+                newAlgorithm: algorithm,
+            };
+            let update_algorithm_args = to_value(&update_algorithm_args).unwrap();
+            let response = invoke("request_update_algorithm", update_algorithm_args).await;
+            let response = from_value::<MyResult<u64, String>>(response).unwrap();
+            match response{
+                MyResult::Ok(id) => {
+                    let mut context = leptos_context.lock().await;
+                    context.update_model(id).await;
+                }
+                MyResult::Err(e) => {
+                    terminal_log(&format!("更新算法失败：{}", e)).await;
+                }
+            }
+        });
+    };
     let children = move || {
         expand_info()
             .map(|info| info.children.clone())
             .unwrap_or_default()
     };
-    console_log("Alive");
+    let algorithm = move || {
+        let algorithm = expand_info()
+            .map(|info| info.algorithm.clone())
+            .unwrap_or(Algorithm::None);
+        console_log(&format!("收到的算法：{:?}", algorithm));
+        console_log(&format!("算法字符串：{}", algorithm.to_string()));
+        algorithm.to_string()
+    };
     let on_add = move |_| {};
-    console_log("Still Alive");
     view! {
         {move || {
+            let on_algorithm_change = on_algorithm_change.clone();
             if expand_info().is_none() {
                 Either::Left(view! { <div>"加载中..."</div> })
             } else {
@@ -55,6 +82,7 @@ pub fn TreeNodeChildren(id: u64) -> impl IntoView {
                                 <select
                                     class="inline-block border border-gray-300 rounded p-2"
                                     on:change=on_algorithm_change
+                                    prop:value=algorithm()
                                 >
                                     <option value=Algorithm::None
                                         .to_string()>{Algorithm::None.to_string()}</option>

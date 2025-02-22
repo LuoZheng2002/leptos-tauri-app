@@ -22,34 +22,29 @@ pub struct LeptosContext {
 
 impl LeptosContext {
     pub async fn get_model(&mut self, id: u64) -> TreeNodeModel {
-        let id_args = IdArgs { id };
-        let id_args = to_value(&id_args).unwrap();
-        self.models
-            .get(&id)
-            .map_or_else(
-                || {
-                    Either::Left(async {
-                        let result = invoke("query_node", id_args).await;
-                        let result = from_value::<MyResult<Model, String>>(result).unwrap();
-                        match result {
-                            MyResult::Ok(model) => TreeNodeModel {
-                                id: model.id,
-                                name: RwSignal::new(model.name),
-                                ref_count: RwSignal::new(model.ref_count),
-                                expand_info: RwSignal::new(model.expand_info),
-                                value: RwSignal::new(model.value),
-                            },
-                            MyResult::Err(e) => {
-                                // handle error
-                                terminal_log(&e).await;
-                                TreeNodeModel::default()
-                            }
-                        }
-                    })
+        if !self.models.contains_key(&id)
+        {
+            let id_args = IdArgs { id };
+            let id_args = to_value(&id_args).unwrap();
+            let result = invoke("query_node", id_args).await;
+            let result = from_value::<MyResult<Model, String>>(result).unwrap();
+            let model = match result {
+                MyResult::Ok(model) => TreeNodeModel {
+                    id: model.id,
+                    name: RwSignal::new(model.name),
+                    ref_count: RwSignal::new(model.ref_count),
+                    expand_info: RwSignal::new(model.expand_info),
+                    value: RwSignal::new(model.value),
                 },
-                |model| Either::Right(async { model.clone() }),
-            )
-            .await
+                MyResult::Err(e) => {
+                    // handle error
+                    terminal_log(&e).await;
+                    TreeNodeModel::default()
+                }
+            };
+            self.models.insert(id, model);
+        }
+        self.models.get(&id).unwrap().clone()
     }
     pub async fn update_model(&mut self, id: u64){
         let model = self.models.get(&id).expect("Update model is only called when the model exists in the frontend");
