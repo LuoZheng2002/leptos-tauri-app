@@ -22,6 +22,7 @@ pub fn TreeNodeChildren(id: u64) -> impl IntoView {
             model
         }
     });
+    let (editing, set_editing) = signal(false);
     let expand_info = move || {
         tree_node_model
             .get()
@@ -32,6 +33,7 @@ pub fn TreeNodeChildren(id: u64) -> impl IntoView {
     let on_algorithm_change = move |ev: Event| {
         let algorithm_str = event_target_value(&ev);
         let algorithm = Algorithm::from_str(&algorithm_str).unwrap();
+        console_log(&format!("form中的算法字符串：{}，算法枚举量：{:?}", algorithm_str, algorithm));
         let leptos_context = leptos_context2.clone();
         spawn_local(async move{
             let update_algorithm_args = UpdateAlgorithmArgs {
@@ -57,6 +59,7 @@ pub fn TreeNodeChildren(id: u64) -> impl IntoView {
             .map(|info| info.children.clone())
             .unwrap_or_default()
     };
+    // let set_editing_true = move |_| set_editing.set(true);
     let algorithm = move || {
         let algorithm = expand_info()
             .map(|info| info.algorithm.clone())
@@ -76,27 +79,40 @@ pub fn TreeNodeChildren(id: u64) -> impl IntoView {
                     view! {
                         <div class="transition-opacity duration-500 ease-in-out opacity-100">
                             <div class="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded-md">
-                                <div class="w-4 h-4 inline-block" />
-                                <Icon width="16" height="16" icon=icondata::LuCircuitBoard />
-                                <div class="inline-block">"算法："</div>
-                                <select
-                                    class="inline-block border border-gray-300 rounded p-2"
-                                    on:change=on_algorithm_change
-                                    prop:value=algorithm()
-                                >
-                                    <option value=Algorithm::None
-                                        .to_string()>{Algorithm::None.to_string()}</option>
-                                    <option value=Algorithm::Sum
-                                        .to_string()>{Algorithm::Sum.to_string()}</option>
-                                    <option value=Algorithm::Product
-                                        .to_string()>{Algorithm::Product.to_string()}</option>
-                                    <option value=Algorithm::Average
-                                        .to_string()>{Algorithm::Average.to_string()}</option>
-                                    <option value=Algorithm::Max
-                                        .to_string()>{Algorithm::Max.to_string()}</option>
-                                    <option value=Algorithm::Min
-                                        .to_string()>{Algorithm::Min.to_string()}</option>
-                                </select>
+                                {move || {
+                                let on_algorithm_change = on_algorithm_change.clone();
+                                    // if editing.get() {
+                                            view! {
+                                                <div class="w-4 h-4 inline-block" />
+                                                <Icon
+                                                    width="16"
+                                                    height="16"
+                                                    icon=icondata::LuCircuitBoard
+                                                />
+                                                <div class="inline-block">"算法："</div>
+                                                <select
+                                                    class="inline-block border border-gray-300 rounded p-2"
+                                                    on:change=on_algorithm_change
+                                                    prop:value=algorithm
+                                                >
+                                                    <option value=Algorithm::None
+                                                        .to_string()>{Algorithm::None.to_string()}</option>
+                                                    <option value=Algorithm::Sum
+                                                        .to_string()>{Algorithm::Sum.to_string()}</option>
+                                                    <option value=Algorithm::Product
+                                                        .to_string()>{Algorithm::Product.to_string()}</option>
+                                                    <option value=Algorithm::Average
+                                                        .to_string()>{Algorithm::Average.to_string()}</option>
+                                                    <option value=Algorithm::Max
+                                                        .to_string()>{Algorithm::Max.to_string()}</option>
+                                                    <option value=Algorithm::Min
+                                                        .to_string()>{Algorithm::Min.to_string()}</option>
+                                                </select>
+                                            }.into_any()
+                                    // } else {
+                                    //         view! { <div class="w-4 h-4 inline-block"></div> }.into_any()
+                                    // }
+                                }}
                             </div>
                             <For
                                 each=move || children()

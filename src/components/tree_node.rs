@@ -22,6 +22,7 @@ pub fn TreeNode(id: u64) -> impl IntoView {
     let leptos_context1 = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
     let leptos_context2 = leptos_context1.clone();
     let leptos_context3 = leptos_context1.clone();
+    
     let (expanded, set_expanded) = signal(false);
     let (editing, set_editing) = signal(false);
     let (new_name, set_new_name) = signal(String::new());
@@ -95,7 +96,8 @@ pub fn TreeNode(id: u64) -> impl IntoView {
                     }
                 }
                 MyResult::Err(e) => {
-                    terminal_log(&e).await;
+                    let context = leptos_context.lock().await;
+                    context.err_msg.set(e);
                 }
             }
         });
@@ -194,10 +196,14 @@ pub fn TreeNode(id: u64) -> impl IntoView {
                         },
                     )
                 } else {
-                    Either::Right(view! { <span on:dblclick=set_editing_true>{name}</span> })
+                    Either::Right(
+                        view! {
+                            <span on:dblclick=set_editing_true>{name}</span>
+                            <span class="ml-3">"id: "{id}</span>
+                        },
+                    )
                 }
-            }}
-            // {/* Delete Button */}
+            }} // {/* Delete Button */}
 
             <div class="ml-auto">
                 <button

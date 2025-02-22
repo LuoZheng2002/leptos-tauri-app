@@ -38,10 +38,10 @@ struct GreetArgs<'a> {
 
 #[component]
 pub fn App() -> impl IntoView {
-    let err_msg = RwSignal::new(String::new());
+    let err_msg = ArcRwSignal::new(String::new());
     let leptos_context = Arc::new(Mutex::new(LeptosContext {
         models: Default::default(),
-        err_msg,
+        err_msg: err_msg.clone(),
     }));
     provide_context(leptos_context);
     view! {

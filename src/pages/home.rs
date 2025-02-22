@@ -86,13 +86,13 @@ pub fn Home() -> impl IntoView {
                 "选择的文件路径：" <span class="text-blue-600">{file_path}</span>
             </p>
             // <div class="flex items-center space-x-2">
-            //     <div class="inline-block">"根节点名称："</div>
-            //     <input
-            //         type="text"
-            //         bind:value=(root_name, set_root_name)
-            //         placeholder="Type something"
-            //         class="px-3 py-2 border rounded-lg shadow-sm focus:ring focus:ring-blue-300"
-            //     />
+            // <div class="inline-block">"根节点名称："</div>
+            // <input
+            // type="text"
+            // bind:value=(root_name, set_root_name)
+            // placeholder="Type something"
+            // class="px-3 py-2 border rounded-lg shadow-sm focus:ring focus:ring-blue-300"
+            // />
             // </div>
 
             <button

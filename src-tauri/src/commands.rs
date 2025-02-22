@@ -213,26 +213,35 @@ pub fn request_add(
 
 fn request_update_algorithm_helper(
     id: u64,
-    algorithm: Algorithm,
+    new_algorithm: Algorithm,
     state: tauri::State<RwLock<TauriState>>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     println!(
-        "Rust: request_update_algorithm called with id: {}, algorithm: {}",
+        "Rust: request_update_algorithm called with id: {}, algorithm: {:?}",
         id,
-        algorithm.to_string()
+        new_algorithm
     );
-    Ok(())
+    let mut state = state.write().unwrap();
+    let models = state.curr_tree_model.as_mut().ok_or("模型未加载".to_string())?;
+    let model = models.models.get_mut(&id).ok_or(format!("未找到模型{}", id))?;
+    if let Some(expand_info) = model.expand_info.as_mut() {
+        expand_info.algorithm = new_algorithm;
+    }
+    else{
+        Err("更新算法失败：模型无子节点".to_string())?;
+    }
+    Ok(id)
 }
 
 #[tauri::command]
 pub fn request_update_algorithm(
     id: u64,
-    algorithm: Algorithm,
+    new_algorithm: Algorithm,
     state: tauri::State<RwLock<TauriState>>,
-) -> MyResult<(), String> {
-    let result = request_update_algorithm_helper(id, algorithm, state);
+) -> MyResult<u64, String> {
+    let result = request_update_algorithm_helper(id, new_algorithm, state);
     match result {
-        Ok(_) => MyResult::Ok(()),
+        Ok(id) => MyResult::Ok(id),
         Err(e) => MyResult::Err(e),
     }
 }

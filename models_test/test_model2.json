@@ -1,0 +1,16 @@
+{
+    "root_name": "A",
+    "data":
+[
+    {
+        "name": "A",
+        "children": ["B", "B"],
+        "algorithm": "quzuidazhi"
+    },
+    {
+        "name": "B",
+        "children": ["D"],
+        "algorithm": "quzuixiaozhi"
+    }
+]
+}
