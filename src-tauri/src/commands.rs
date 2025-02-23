@@ -1,12 +1,13 @@
 use crate::helper::{suggest_new_name_add, suggest_new_name_dupe};
 use crate::loader::load_models;
-use crate::models::{TauriState, TreeModel};
-use shared::{Algorithm, DeleteResponse, Model, MyResult, RenameResponse};
-use std::collections::{HashMap, HashSet};
+use crate::models::{FileModel, FileTreeModel, TauriState, TreeModel};
+use crate::saver::save_models;
+use shared::{Algorithm, DeleteResponse, ExpandInfo, Model, MyResult, RenameResponse};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicU64, RwLock};
 use tauri::AppHandle;
-use tauri_plugin_dialog::{Dialog, DialogExt, FileDialogBuilder, FilePath};
+use tauri_plugin_dialog::{Dialog, DialogExt, FileDialogBuilder, FilePath, MessageDialogButtons};
 
 fn select_file_helper(app: AppHandle) -> Result<String, String> {
     println!("select_file called");
@@ -99,28 +100,49 @@ fn update_reference_count(models: &mut HashMap<u64, Model>) {
         .iter()
         .map(|(id, _)| (*id, 0))
         .collect::<HashMap<u64, u64>>();
+    println!("更新reference count");
     for (_, model) in models.iter() {
         if let Some(expand_info) = &model.expand_info {
             for child_id in expand_info.children.iter() {
-                *reference_counts.get_mut(child_id).unwrap() += 1;
+                if let Some(reference_count) = reference_counts.get_mut(child_id) {
+                    *reference_count += 1;
+                } else {
+                    eprintln!(
+                        "错误：在更新reference count时在reference_counts中未找到子节点{}",
+                        child_id
+                    );
+                }
             }
         }
     }
     for (id, reference_count) in reference_counts.iter() {
+        println!("更新节点{}的reference count为{}", id, reference_count);
         models.get_mut(id).unwrap().ref_count = *reference_count;
     }
 }
 
-fn delete_node_and_update_children(
+fn replace_node_and_update_children(
     id: u64,
+    new_id: Option<u64>,
     models: &mut HashMap<u64, Model>,
 ) -> Result<HashSet<u64>, String> {
-    models.remove(&id).ok_or(format!("未找到要删除的模型：{}", id))?;
+    println!("删除节点：{}", id);
+    models
+        .remove(&id)
+        .ok_or(format!("未找到要删除的模型：{}", id))?;
     let mut ids_to_update = HashSet::new();
     for (_, model) in models.iter_mut() {
         if let Some(expand_info) = model.expand_info.as_mut() {
             if expand_info.children.contains(&id) {
-                expand_info.children.retain(|child_id| *child_id != id);
+                if let Some(new_id) = new_id {
+                    expand_info.children.iter_mut().for_each(|child_id| {
+                        if *child_id == id {
+                            *child_id = new_id;
+                        }
+                    });
+                } else {
+                    expand_info.children.retain(|child_id| *child_id != id);
+                }
                 ids_to_update.insert(model.id);
             }
         }
@@ -137,11 +159,11 @@ fn request_rename_helper(
     // 1. If has children, and name is duplicated, return error
     // 2. If has no children, and name is duplicated, delete current model and replace other models' children -> (delete message, parent update messages)
     // 3. If name is not duplicated, rename -> (rename message)
+    let mut state = state.write().unwrap();
     println!(
         "Rust: request_rename called with id: {}, new_name: {}",
         id, new_name
     );
-    let mut state = state.write().unwrap();
     let models = &mut state
         .curr_tree_model
         .as_mut()
@@ -150,6 +172,9 @@ fn request_rename_helper(
     let new_name_owner = models.iter().find(|(_, model)| model.name == new_name);
     let new_name_owner_id = new_name_owner.map(|(id, _)| *id);
     let model = models.get_mut(&id).ok_or(format!("未找到模型{}", id))?;
+    if new_name == "" {
+        Err("重命名失败：新名称为空".to_string())?;
+    }
     if model.name == new_name {
         Err("重命名失败：新名称与旧名称相同".to_string())?;
     }
@@ -157,7 +182,9 @@ fn request_rename_helper(
         if model.expand_info.is_some() {
             Err("重命名失败：新名称已存在".to_string())?;
         }
-        let ids_to_update = delete_node_and_update_children(new_name_owner_id, models)?;
+        let mut ids_to_update =
+            replace_node_and_update_children(id, Some(new_name_owner_id), models)?;
+        ids_to_update.insert(new_name_owner_id);
         Ok(RenameResponse::RemoveSelfUpdateRelated {
             id_to_remove: id,
             ids_to_update: ids_to_update.into_iter().collect(),
@@ -181,9 +208,12 @@ pub fn request_rename(
     }
 }
 
-fn request_delete_helper(id: u64, state: tauri::State<RwLock<TauriState>>) -> Result<DeleteResponse, String> {
+fn request_delete_helper(
+    id: u64,
+    state: tauri::State<RwLock<TauriState>>,
+) -> Result<DeleteResponse, String> {
     println!("Rust: request_delete called with id: {}", id);
-    if id == 0{
+    if id == 0 {
         Err("根节点不可删除".to_string())?;
     }
     let mut state = state.write().unwrap();
@@ -192,7 +222,7 @@ fn request_delete_helper(id: u64, state: tauri::State<RwLock<TauriState>>) -> Re
         .as_mut()
         .ok_or("模型未加载".to_string())?
         .models;
-    let ids_to_update = delete_node_and_update_children(id, models)?;
+    let ids_to_update = replace_node_and_update_children(id, None, models)?;
     Ok(DeleteResponse {
         id_to_remove: id,
         ids_to_update: ids_to_update.into_iter().collect(),
@@ -200,7 +230,10 @@ fn request_delete_helper(id: u64, state: tauri::State<RwLock<TauriState>>) -> Re
 }
 
 #[tauri::command]
-pub fn request_delete(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<DeleteResponse, String> {
+pub fn request_delete(
+    id: u64,
+    state: tauri::State<RwLock<TauriState>>,
+) -> MyResult<DeleteResponse, String> {
     let result = request_delete_helper(id, state);
     match result {
         Ok(id) => MyResult::Ok(id),
@@ -208,10 +241,7 @@ pub fn request_delete(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyRes
     }
 }
 
-fn request_add_helper(
-    id: u64,
-    state: tauri::State<RwLock<TauriState>>,
-) -> Result<u64, String> {
+fn request_add_helper(id: u64, state: tauri::State<RwLock<TauriState>>) -> Result<u64, String> {
     let mut state = state.write().unwrap();
     let tree_model = state
         .curr_tree_model
@@ -221,7 +251,10 @@ fn request_add_helper(
         .models
         .get_mut(&id)
         .ok_or(format!("添加错误：未找到模型{}", id))?;
-    let expand_info = model.expand_info.as_mut().ok_or("添加失败：模型无子节点".to_string())?;
+    let expand_info = model
+        .expand_info
+        .as_mut()
+        .ok_or("添加失败：模型无子节点".to_string())?;
     let new_id = tree_model.counter.fetch_add(1, Ordering::Relaxed);
     expand_info.children.push(new_id);
     let new_name = suggest_new_name_add(&tree_model.models);
@@ -237,10 +270,7 @@ fn request_add_helper(
 }
 
 #[tauri::command]
-pub fn request_add(
-    id: u64,
-    state: tauri::State<RwLock<TauriState>>,
-) -> MyResult<u64, String> {
+pub fn request_add(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<u64, String> {
     let result = request_add_helper(id, state);
     match result {
         Ok(new_id) => MyResult::Ok(new_id),
@@ -290,22 +320,144 @@ pub fn request_update_algorithm(
 fn request_can_expand_toggling_helper(
     id: u64,
     state: tauri::State<RwLock<TauriState>>,
-) -> Result<(), String> {
+    app: AppHandle,
+) -> Result<u64, String> {
     println!("Rust: request_can_expand_toggling called with id: {}", id);
-    Ok(())
+    let mut state = state.write().unwrap();
+    let tree_model = state
+        .curr_tree_model
+        .as_mut()
+        .ok_or("模型未加载".to_string())?;
+    let model = tree_model
+        .models
+        .get_mut(&id)
+        .ok_or(format!("未找到模型{}", id))?;
+    if let Some(expand_info) = &model.expand_info {
+        // ask user if confirm the operation
+        if !expand_info.children.is_empty() {
+            let answer = app
+                .dialog()
+                .message("当前节点下仍有子节点，是否清空所有子节点？")
+                .title("清空子节点确认")
+                .buttons(MessageDialogButtons::OkCancelCustom(
+                    "确认".to_string(),
+                    "取消".to_string(),
+                ))
+                .blocking_show();
+            if answer {
+                model.expand_info = None;
+            } else {
+                Err("已取消清空子节点".to_string())?;
+            }
+        } else {
+            model.expand_info = None;
+        }
+    } else {
+        model.expand_info = Some(ExpandInfo {
+            algorithm: Algorithm::None,
+            children: vec![],
+        });
+    }
+    Ok(id)
 }
 
 #[tauri::command]
 pub fn request_can_expand_toggling(
     id: u64,
     state: tauri::State<RwLock<TauriState>>,
-) -> MyResult<(), String> {
-    let result = request_can_expand_toggling_helper(id, state);
+    app: AppHandle,
+) -> MyResult<u64, String> {
+    let result = request_can_expand_toggling_helper(id, state, app);
+    match result {
+        Ok(id) => MyResult::Ok(id),
+        Err(e) => MyResult::Err(e),
+    }
+}
+
+fn request_save_helper(state: tauri::State<RwLock<TauriState>>) -> Result<(), String> {
+    println!("Rust: request_save called");
+    let state = state.read().unwrap();
+    let tree_model = state
+        .curr_tree_model
+        .as_ref()
+        .ok_or("保存错误：模型未加载".to_string())?;
+    let file_path = state
+        .curr_file_path
+        .as_ref()
+        .ok_or("保存错误：文件路径未加载".to_string())?;
+    // let result = crate::saver::save_models(file_path, tree_model)?;
+    let root_name = tree_model.models.get(&0).unwrap().name.clone();
+    let mut file_models = HashMap::<u64, FileModel>::new();
+    let mut met = HashSet::<u64>::new();
+    let mut queue = VecDeque::<u64>::new();
+    queue.push_back(0);
+    let mut counter = 0;
+    while let Some(id) = queue.pop_front() {
+        counter += 1;
+        if counter > 10000 {
+            Err("在保存时遇到错误：循环次数过多".to_string())?;
+        }
+        if met.contains(&id) {
+            continue;
+        }
+        met.insert(id);
+        if file_models.get(&id).is_some() {
+            Err(format!("在保存时遇到错误：重复的模型{}", id))?;
+        }
+        let model = tree_model
+            .models
+            .get(&id)
+            .ok_or(format!("在保存时遇到错误：未找到模型{}", id))?;
+        if model.expand_info.is_none() {
+            // 不保存没有子节点的节点
+            continue;
+        }
+        let ExpandInfo {
+            children,
+            algorithm,
+        } = model.expand_info.clone().unwrap();
+        for child in children.iter() {
+            queue.push_back(*child);
+        }
+        let children_names = children
+            .iter()
+            .map(|child_id| {
+                let model = tree_model.models.get(&child_id).ok_or(format!(
+                    "保存时遇到错误：取children_names时遇到未知模型：{}",
+                    child_id
+                ))?;
+                Ok(model.name.clone())
+            })
+            .collect::<Result<Vec<String>, String>>()?;
+        let file_model = FileModel {
+            name: model.name.clone(),
+            algorithm: algorithm.to_string(),
+            children: children_names,
+        };
+        file_models.insert(id, file_model);
+        queue.extend(children);
+    }
+    let file_models = file_models
+        .into_iter()
+        .map(|(_id, file_model)| file_model)
+        .collect::<Vec<_>>();
+    let file_tree_model = FileTreeModel{
+        root_name,
+        data: file_models,
+    };
+    save_models(file_path, file_tree_model)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn request_save(state: tauri::State<RwLock<TauriState>>) -> MyResult<(), String> {
+    let result = request_save_helper(state);
     match result {
         Ok(_) => MyResult::Ok(()),
         Err(e) => MyResult::Err(e),
     }
 }
+
 // #[tauri::command]
 // pub fn update_node_name(name: &str, new_name: &str, state: tauri::State<RwLock<TauriState>>) -> String {
 //     todo!()

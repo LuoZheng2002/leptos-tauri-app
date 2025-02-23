@@ -50,6 +50,7 @@ pub fn Home() -> impl IntoView {
         };
         let navigate = navigate.clone();
         spawn_local(async move {
+            let context = leptos_context.lock().await;
             terminal_log("提交").await;
             let result = invoke(
                 "prepare_models",
@@ -60,14 +61,11 @@ pub fn Home() -> impl IntoView {
             match result {
                 MyResult::Ok(_) => {
                     navigate("/tree", Default::default());
+                    context.err_msg.set("".to_string());
                 }
                 MyResult::Err(e) => {
                     // Handle error
-                    leptos_context
-                        .lock()
-                        .await
-                        .err_msg
-                        .set(format!("错误信息：{}", e));
+                    context.err_msg.set(format!("错误信息：{}", e));
                 }
             }
         });

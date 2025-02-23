@@ -5,23 +5,23 @@ use strum_macros::{Display, EnumString};
 #[derive(Serialize, Deserialize, Clone, Debug, Default, EnumString, Display)]
 pub enum Algorithm {
     #[default]
-    //#[strum(serialize = "请选择/缺失/错误")]
-    #[strum(serialize = "qingxuanze")]
+    #[strum(serialize = "请选择/缺失/错误")]
+    //#[strum(serialize = "qingxuanze")]
     None,
-    // #[strum(serialize = "求和")]
-    #[strum(serialize = "qiuhe")]
+    #[strum(serialize = "求和")]
+    // #[strum(serialize = "qiuhe")]
     Sum,
-    // #[strum(serialize = "取乘积")]
-    #[strum(serialize = "quchengji")]
+    #[strum(serialize = "取乘积")]
+    // #[strum(serialize = "quchengji")]
     Product,
-    // #[strum(serialize = "取平均")]
-    #[strum(serialize = "qupingjun")]
+    #[strum(serialize = "取平均")]
+    // #[strum(serialize = "qupingjun")]
     Average,
-    // #[strum(serialize = "取最大值")]
-    #[strum(serialize = "quzuidazhi")]
+    #[strum(serialize = "取最大值")]
+    // #[strum(serialize = "quzuidazhi")]
     Max,
-    // #[strum(serialize = "取最小值")]
-    #[strum(serialize = "quzuixiaozhi")]
+    #[strum(serialize = "取最小值")]
+    // #[strum(serialize = "quzuixiaozhi")]
     Min,
 }
 

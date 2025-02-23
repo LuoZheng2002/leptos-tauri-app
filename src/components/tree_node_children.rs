@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     str::FromStr,
     sync::{Arc, RwLock},
 };
@@ -63,7 +63,7 @@ pub fn TreeNodeChildren(id: u64, expand_signal: ExpandSignal) -> impl IntoView {
             let leptos_context = leptos_context.clone();
             let children_ids = children_ids.get();
             spawn_local(async move {
-                let children = children_ids
+                let new_children = children_ids
                     .iter()
                     .map(|id| async {
                         let mut context = leptos_context.lock().await;
@@ -71,13 +71,47 @@ pub fn TreeNodeChildren(id: u64, expand_signal: ExpandSignal) -> impl IntoView {
                     })
                     .collect::<Vec<_>>();
                 // join all the futures
-                let children = join_all(children)
-                    .await
-                    .into_iter()
-                    .enumerate()
+                let new_children = join_all(new_children).await.into_iter().collect::<Vec<_>>();
+                console_log(&format!("children count: {}", new_children.len()));
+                let old_children = children.get_untracked();
+                let mut id_to_indices = HashMap::<u64, BTreeSet<usize>>::new();
+                for old_child in old_children.iter() {
+                    id_to_indices
+                        .entry(old_child.1.id)
+                        .or_insert_with(BTreeSet::new)
+                        .insert(old_child.0);
+                }
+                let old_children_indices = old_children
+                    .iter()
+                    .map(|(index, _)| *index)
                     .collect::<Vec<_>>();
-                console_log(&format!("children count: {}", children.len()));
-                set_children.set(children);
+                console_log(&format!("old children indices: {:?}", old_children_indices));
+                let mut next_index = old_children
+                    .iter()
+                    .map(|(index, _)| *index)
+                    .max()
+                    .unwrap_or(0)
+                    + 1;
+                let mut new_children_indexed = Vec::<(usize, TreeNodeModel)>::new();
+                for new_child in new_children.into_iter() {
+                    if let Some(indices) = id_to_indices.get_mut(&new_child.id) {
+                        let index = indices.pop_first().unwrap();
+                        if indices.is_empty() {
+                            id_to_indices.remove(&new_child.id);
+                        }
+                        new_children_indexed.push((index, new_child));
+                    } else {
+                        let index = next_index;
+                        next_index += 1;
+                        new_children_indexed.push((index, new_child));
+                    }
+                }
+                let new_children_indices = new_children_indexed
+                    .iter()
+                    .map(|(index, _)| *index)
+                    .collect::<Vec<_>>();
+                console_log(&format!("new children indices: {:?}", new_children_indices));
+                set_children.set(new_children_indexed);
             });
         }
     });

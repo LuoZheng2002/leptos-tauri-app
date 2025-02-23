@@ -16,22 +16,23 @@ use wasm_bindgen::JsValue;
 #[component]
 pub fn Tree() -> impl IntoView {
     let leptos_context = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
-    let leptos_context2 = leptos_context.clone();
-    let leptos_context3 = leptos_context.clone();
-    let curr_file_path_data = LocalResource::new(move || {
+    let curr_file_path_data = LocalResource::new({
         let leptos_context = leptos_context.clone();
-        async move {
-            let result = invoke("query_file_path", JsValue::NULL).await;
-            let result = from_value::<MyResult<String, String>>(result).unwrap();
-            match result {
-                MyResult::Ok(file_path) => file_path,
-                MyResult::Err(e) => {
-                    leptos_context
-                        .lock()
-                        .await
-                        .err_msg
-                        .set(format!("错误信息：{}", e));
-                    "获取文件名错误".to_string()
+        move || {
+            let leptos_context = leptos_context.clone();
+            async move {
+                let result = invoke("query_file_path", JsValue::NULL).await;
+                let result = from_value::<MyResult<String, String>>(result).unwrap();
+                match result {
+                    MyResult::Ok(file_path) => file_path,
+                    MyResult::Err(e) => {
+                        leptos_context
+                            .lock()
+                            .await
+                            .err_msg
+                            .set(format!("错误信息：{}", e));
+                        "获取文件名错误".to_string()
+                    }
                 }
             }
         }
@@ -43,22 +44,47 @@ pub fn Tree() -> impl IntoView {
             .map_or_else(|| "加载中".to_string(), |s| s.clone())
     };
     let navigate = use_navigate();
-    let on_save = move |_| {};
-    let on_back = move |_| {
-        let leptos_context = leptos_context2.clone();
-        let navigate = navigate.clone();
-        spawn_local(async move {
-            let mut leptos_context = leptos_context.lock().await;
-            leptos_context.models.clear();
-            navigate("/", Default::default());
-        });
+    let on_save = {
+        let leptos_context = leptos_context.clone();
+        move |_| {
+            let leptos_context = leptos_context.clone();
+            spawn_local(async move {
+                let context = leptos_context.lock().await;
+                let result = invoke("request_save", JsValue::NULL).await;
+                let result = from_value::<MyResult<(), String>>(result).unwrap();
+                match result {
+                    MyResult::Ok(_) => {
+                        context.err_msg.set("保存成功".to_string());
+                    }
+                    MyResult::Err(e) => {
+                        context.err_msg.set(format!("{}", e));
+                    }
+                }
+            });
+        }
+    };
+    let on_back = {
+        let leptos_context = leptos_context.clone();
+        move |_| {
+            let leptos_context = leptos_context.clone();
+            let navigate = navigate.clone();
+            spawn_local(async move {
+                let mut context = leptos_context.lock().await;
+                context.models.clear();
+                context.err_msg.set("".to_string());
+                navigate("/", Default::default());
+            });
+        }
     };
 
-    let root_resource = LocalResource::new(move || {
-        let leptos_context = leptos_context3.clone();
-        async move {
-            let mut context = leptos_context.lock().await;
-            context.get_model(0).await
+    let root_resource = LocalResource::new({
+        let leptos_context = leptos_context.clone();
+        move || {
+            let leptos_context = leptos_context.clone();
+            async move {
+                let mut context = leptos_context.lock().await;
+                context.get_model(0).await
+            }
         }
     });
 

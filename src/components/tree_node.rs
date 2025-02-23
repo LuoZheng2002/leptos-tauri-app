@@ -4,6 +4,7 @@ use crate::{
     app::{invoke, terminal_log},
     models::LeptosContext,
 };
+use leptos::server_fn::response;
 use leptos::{
     either::Either,
     ev::{Event, KeyboardEvent, MouseEvent},
@@ -29,7 +30,6 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
         expand_signal,
         value,
     } = tree_node_model;
-    let name2 = name.clone();
 
     let (expanded, set_expanded) = signal(false);
     let (editing, set_editing) = signal(false);
@@ -37,26 +37,33 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
 
     let on_rename = {
         let leptos_context = leptos_context.clone();
+        let name = name.clone();
         move || {
             let leptos_context = leptos_context.clone();
-        set_editing.set(false);
-        let new_name = new_name.get();
-        if new_name == name2.get() {
-            return;
-        }
-        let rename_args = RenameArgs {
-            id,
-            newName: new_name,
-        };
-        let rename_args = to_value(&rename_args).unwrap();
-        let leptos_context = leptos_context.clone();
-        spawn_local(async move {
-            let result = invoke("request_rename", rename_args).await;
-            let result = from_value::<MyResult<RenameResponse, String>>(result).unwrap();
-            match result {
-                MyResult::Ok(response) => {
-                    let mut context = leptos_context.lock().await;
-                    match response {
+            let name = name.clone();
+            let new_name = new_name.clone();
+            set_editing.set(false);
+            spawn_local(async move {
+                // lock before doing any operation
+                let mut context = leptos_context.lock().await;
+                // if this node is already deleted, exit
+                if !context.models.contains_key(&id) {
+                    return;
+                }
+                let new_name = new_name.get_untracked();
+                if new_name == name.get_untracked() {
+                    return;
+                }
+                let rename_args = RenameArgs {
+                    id,
+                    newName: new_name,
+                };
+                let rename_args = to_value(&rename_args).unwrap();
+                let result = invoke("request_rename", rename_args).await;
+
+                let result = from_value::<MyResult<RenameResponse, String>>(result).unwrap();
+                match result {
+                    MyResult::Ok(response) => match response {
                         RenameResponse::RemoveSelfUpdateRelated {
                             id_to_remove,
                             ids_to_update,
@@ -73,20 +80,20 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
                             console_log(&format!("rename id: {}", id));
                             context.update_model(id).await;
                         }
+                    },
+                    MyResult::Err(e) => {
+                        context.err_msg.set(e);
                     }
                 }
-                MyResult::Err(e) => {
-                    let context = leptos_context.lock().await;
-                    context.err_msg.set(e);
-                }
-            }
-        });
-    }};
+            });
+        }
+    };
     let on_blur = {
         let on_rename = on_rename.clone();
         move |_| {
-        on_rename();
-    }};
+            on_rename();
+        }
+    };
     let on_enter_down = move |ev: KeyboardEvent| {
         if ev.key() == "Enter" {
             on_rename();
@@ -96,27 +103,36 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
         let leptos_context = leptos_context.clone();
         move |_| {
             let leptos_context = leptos_context.clone();
-        let id_args = IdArgs { id };
-        let id_args = to_value(&id_args).unwrap();
-        spawn_local(async move {
-            let response = invoke("request_delete", id_args).await;
-            let response = from_value::<MyResult<DeleteResponse, String>>(response).unwrap();
-            match response {
-                MyResult::Ok(DeleteResponse{id_to_remove, ids_to_update}) => {
-                    let mut context = leptos_context.lock().await;
-                    context.models.remove(&id_to_remove);
-                    for parent in ids_to_update {
-                        if context.models.contains_key(&parent) {
-                            context.update_model(parent).await;
+            spawn_local(async move {
+                // lock before doing any operation
+                let mut context = leptos_context.lock().await;
+                // if this node is already deleted, exit
+                if !context.models.contains_key(&id) {
+                    return;
+                }
+                let id_args = IdArgs { id };
+                let id_args = to_value(&id_args).unwrap();
+                let response = invoke("request_delete", id_args).await;
+                let response = from_value::<MyResult<DeleteResponse, String>>(response).unwrap();
+                match response {
+                    MyResult::Ok(DeleteResponse {
+                        id_to_remove,
+                        ids_to_update,
+                    }) => {
+                        context.models.remove(&id_to_remove);
+                        for parent in ids_to_update {
+                            if context.models.contains_key(&parent) {
+                                context.update_model(parent).await;
+                            }
                         }
                     }
+                    MyResult::Err(e) => {
+                        context.err_msg.set(e);
+                    }
                 }
-                MyResult::Err(e) => {
-                    terminal_log(&e).await;
-                }
-            }
-        });
-    }};
+            });
+        }
+    };
     let expand_signal2 = expand_signal.clone();
 
     let has_children = move || expand_signal.get().is_some();
@@ -133,14 +149,30 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
     // let set_editing_false = move |_|{
     //     set_editing.set(false);
     // };
-    let request_can_expand_toggling = move |_| {
-        let id_args = IdArgs { id };
-        let id_args = to_value(&id_args).unwrap();
-        spawn_local(async move {
-            let result = invoke("request_can_expand_toggling", id_args).await;
-            // process result
-            todo!()
-        });
+    let request_can_expand_toggling = {
+        let leptos_context = leptos_context.clone();
+        move |_| {
+            let leptos_context = leptos_context.clone();
+            spawn_local(async move {
+                let mut context = leptos_context.lock().await;
+                let id_args = IdArgs { id };
+                let id_args = to_value(&id_args).unwrap();
+                let response = invoke("request_can_expand_toggling", id_args).await;
+                let response = from_value::<MyResult<u64, String>>(response).unwrap();
+                match response {
+                    MyResult::Ok(id) => {
+                        context.update_model(id).await;
+                    }
+                    MyResult::Err(e) => {
+                        context.err_msg.set(e);
+                    }
+                }
+            });
+        }
+    };
+
+    let on_change = move |ev| {
+        set_new_name.set(event_target_value(&ev));
     };
 
     view! {
@@ -192,8 +224,8 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
                         view! {
                             <input
                                 type="text"
-                                value=name
-                                bind:value=(new_name, set_new_name)
+                                prop:value=move|| name.get()
+                                on:change=on_change
                                 on:blur=on_blur
                                 on:keydown=on_enter_down
                                 autofocus

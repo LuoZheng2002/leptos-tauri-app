@@ -5,7 +5,6 @@ use leptos::prelude::{ArcRwSignal, Get, GetUntracked, Set};
 use leptos::task::spawn_local;
 use serde_wasm_bindgen::{from_value, to_value};
 use shared::{Algorithm, ExpandInfo, IdArgs, Model, MyResult};
-use std::pin::pin;
 use std::{collections::HashMap, future::Future};
 
 #[derive(Clone, Debug, Default)]
@@ -49,10 +48,11 @@ impl LeptosContext {
     }
     pub async fn update_model(&mut self, id: u64) {
         console_log(&format!("update_model called with id: {}", id));
-        let model = self
-            .models
-            .get(&id)
-            .expect("Update model is only called when the model exists in the frontend");
+        let model = self.models.get(&id);
+        if model.is_none() {
+            console_log(&format!("Model {} does not exist in the front end", id));
+        }
+        let model = model.unwrap();
         let id_args = IdArgs { id };
         let id_args = to_value(&id_args).unwrap();
         let result = invoke("query_node", id_args).await;
