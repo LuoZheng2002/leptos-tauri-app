@@ -97,7 +97,7 @@ pub fn Home() -> impl IntoView {
                 class="px-4 py-2 text-white bg-green-500 rounded-lg hover:bg-green-600 transition"
                 on:click=submit
             >
-                "Submit"
+                "提交"
             </button>
         </div>
     }

@@ -1,16 +1,1 @@
-{
-    "root_name": "A",
-    "data":
-[
-    {
-        "name": "A",
-        "children": ["B", "B"],
-        "algorithm": "quzuidazhi"
-    },
-    {
-        "name": "B",
-        "children": ["D"],
-        "algorithm": "quzuixiaozhi"
-    }
-]
-}
+{"root_name":"C","data":[{"name":"C","children":["asdfasdfasfdsad","adfsafdsfasdf","新节点7","新节点8"],"algorithm":"取最小值"},{"name":"新节点8","children":["新节点15","新节点12","C"],"algorithm":"取最大值"},{"name":"新节点7","children":["新节点9","新节点10","新节点11"],"algorithm":"请选择/缺失/错误"}]}
