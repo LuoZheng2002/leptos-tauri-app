@@ -78,6 +78,12 @@ pub enum RenameResponse {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DeleteResponse {
+    pub id_to_remove: u64,
+    pub ids_to_update: Vec<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[allow(non_snake_case)]
 pub struct UpdateAlgorithmArgs {
     pub id: u64,

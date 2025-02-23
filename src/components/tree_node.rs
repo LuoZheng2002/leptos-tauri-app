@@ -14,15 +14,13 @@ use leptos::{
 use leptos_icons::Icon;
 use serde::de::value;
 use serde_wasm_bindgen::{from_value, to_value};
-use shared::{IdArgs, MyResult, RenameArgs, RenameResponse};
+use shared::{DeleteResponse, IdArgs, MyResult, RenameArgs, RenameResponse};
 use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
 
 #[component]
 pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
-    let leptos_context1 = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
-    let leptos_context2 = leptos_context1.clone();
-    let leptos_context3 = leptos_context1.clone();
+    let leptos_context = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
 
     let TreeNodeModel {
         id,
@@ -37,7 +35,10 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
     let (editing, set_editing) = signal(false);
     let (new_name, set_new_name) = signal(String::new());
 
-    let on_rename1 = move || {
+    let on_rename = {
+        let leptos_context = leptos_context.clone();
+        move || {
+            let leptos_context = leptos_context.clone();
         set_editing.set(false);
         let new_name = new_name.get();
         if new_name == name2.get() {
@@ -48,7 +49,7 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
             newName: new_name,
         };
         let rename_args = to_value(&rename_args).unwrap();
-        let leptos_context = leptos_context2.clone();
+        let leptos_context = leptos_context.clone();
         spawn_local(async move {
             let result = invoke("request_rename", rename_args).await;
             let result = from_value::<MyResult<RenameResponse, String>>(result).unwrap();
@@ -80,25 +81,42 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
                 }
             }
         });
-    };
-    let on_rename2 = on_rename1.clone();
-    let on_blur = move |_| {
-        on_rename1();
-    };
+    }};
+    let on_blur = {
+        let on_rename = on_rename.clone();
+        move |_| {
+        on_rename();
+    }};
     let on_enter_down = move |ev: KeyboardEvent| {
         if ev.key() == "Enter" {
-            on_rename2();
+            on_rename();
         }
     };
-    let on_delete = move |_| {
+    let on_delete = {
+        let leptos_context = leptos_context.clone();
+        move |_| {
+            let leptos_context = leptos_context.clone();
         let id_args = IdArgs { id };
         let id_args = to_value(&id_args).unwrap();
         spawn_local(async move {
-            let result = invoke("request_delete", id_args).await;
-            // process result
-            todo!()
+            let response = invoke("request_delete", id_args).await;
+            let response = from_value::<MyResult<DeleteResponse, String>>(response).unwrap();
+            match response {
+                MyResult::Ok(DeleteResponse{id_to_remove, ids_to_update}) => {
+                    let mut context = leptos_context.lock().await;
+                    context.models.remove(&id_to_remove);
+                    for parent in ids_to_update {
+                        if context.models.contains_key(&parent) {
+                            context.update_model(parent).await;
+                        }
+                    }
+                }
+                MyResult::Err(e) => {
+                    terminal_log(&e).await;
+                }
+            }
         });
-    };
+    }};
     let expand_signal2 = expand_signal.clone();
 
     let has_children = move || expand_signal.get().is_some();

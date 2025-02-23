@@ -1,7 +1,7 @@
 use crate::helper::{suggest_new_name_add, suggest_new_name_dupe};
 use crate::loader::load_models;
 use crate::models::{TauriState, TreeModel};
-use shared::{Algorithm, Model, MyResult, RenameResponse};
+use shared::{Algorithm, DeleteResponse, Model, MyResult, RenameResponse};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicU64, RwLock};
@@ -111,6 +111,24 @@ fn update_reference_count(models: &mut HashMap<u64, Model>) {
     }
 }
 
+fn delete_node_and_update_children(
+    id: u64,
+    models: &mut HashMap<u64, Model>,
+) -> Result<HashSet<u64>, String> {
+    models.remove(&id).ok_or(format!("未找到要删除的模型：{}", id))?;
+    let mut ids_to_update = HashSet::new();
+    for (_, model) in models.iter_mut() {
+        if let Some(expand_info) = model.expand_info.as_mut() {
+            if expand_info.children.contains(&id) {
+                expand_info.children.retain(|child_id| *child_id != id);
+                ids_to_update.insert(model.id);
+            }
+        }
+    }
+    update_reference_count(models);
+    Ok(ids_to_update)
+}
+
 fn request_rename_helper(
     id: u64,
     new_name: &str,
@@ -139,25 +157,7 @@ fn request_rename_helper(
         if model.expand_info.is_some() {
             Err("重命名失败：新名称已存在".to_string())?;
         }
-        let mut ids_to_update = HashSet::new();
-        // the new name owner needs to update because its reference count changes
-        ids_to_update.insert(new_name_owner_id);
-        // delete current model and update children of all other models
-        models.remove(&id);
-        for (model_id, model) in models.iter_mut() {
-            if let Some(expand_info) = model.expand_info.as_mut() {
-                let children = &mut expand_info.children;
-                children.iter_mut().for_each(|child_id| {
-                    if *child_id == id {
-                        *child_id = new_name_owner_id;
-                        // invalidate this parent at the frontend
-                        ids_to_update.insert(*model_id);
-                    }
-                });
-            }
-        }
-        // update reference count
-        update_reference_count(models);
+        let ids_to_update = delete_node_and_update_children(new_name_owner_id, models)?;
         Ok(RenameResponse::RemoveSelfUpdateRelated {
             id_to_remove: id,
             ids_to_update: ids_to_update.into_iter().collect(),
@@ -181,16 +181,29 @@ pub fn request_rename(
     }
 }
 
-fn request_delete_helper(id: u64, state: tauri::State<RwLock<TauriState>>) -> Result<(), String> {
+fn request_delete_helper(id: u64, state: tauri::State<RwLock<TauriState>>) -> Result<DeleteResponse, String> {
     println!("Rust: request_delete called with id: {}", id);
-    Ok(())
+    if id == 0{
+        Err("根节点不可删除".to_string())?;
+    }
+    let mut state = state.write().unwrap();
+    let models = &mut state
+        .curr_tree_model
+        .as_mut()
+        .ok_or("模型未加载".to_string())?
+        .models;
+    let ids_to_update = delete_node_and_update_children(id, models)?;
+    Ok(DeleteResponse {
+        id_to_remove: id,
+        ids_to_update: ids_to_update.into_iter().collect(),
+    })
 }
 
 #[tauri::command]
-pub fn request_delete(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<(), String> {
+pub fn request_delete(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<DeleteResponse, String> {
     let result = request_delete_helper(id, state);
     match result {
-        Ok(_) => MyResult::Ok(()),
+        Ok(id) => MyResult::Ok(id),
         Err(e) => MyResult::Err(e),
     }
 }
