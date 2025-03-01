@@ -79,6 +79,26 @@ pub fn Tree() -> impl IntoView {
         }
     };
 
+    let on_template_generation = {
+        let leptos_context = leptos_context.clone();
+        move |_| {
+            let leptos_context = leptos_context.clone();
+            spawn_local(async move {
+                let context = leptos_context.lock().await;
+                let response = invoke("request_template_generation", JsValue::NULL).await;
+                let response = from_value::<MyResult<(), String>>(response).unwrap();
+                match response {
+                    MyResult::Ok(_) => {
+                        context.err_msg.set("模板生成成功".to_string());
+                    }
+                    MyResult::Err(e) => {
+                        context.err_msg.set(format!("{}", e));
+                    }
+                }
+            });
+        }
+    };
+
     let on_calculate = {
         let leptos_context = leptos_context.clone();
         move |_| {
@@ -150,6 +170,12 @@ pub fn Tree() -> impl IntoView {
                     class="mx-3 px-4 py-2 bg-blue-600 text-white font-semibold rounded-2xl shadow-md hover:bg-blue-700 transition-all duration-200 ease-in-out active:scale-95"
                 >
                     "返回"
+                </button>
+                <button
+                    on:click=on_template_generation
+                    class="mx-3 px-4 py-2 bg-blue-600 text-white font-semibold rounded-2xl shadow-md hover:bg-blue-700 transition-all duration-200 ease-in-out active:scale-95"
+                >
+                    "生成数据模板"
                 </button>
                 <button
                     on:click=on_calculate

@@ -1,11 +1,11 @@
 use crate::helper::{suggest_new_name_add, suggest_new_name_dupe};
 use crate::loader::{load_data, load_models};
-use crate::models::{self, FileModel, FileTreeModel, TauriState, TreeModel};
+use crate::models::{self, FileData, FileModel, FileTreeModel, TauriState, TreeModel};
 use crate::saver::save_models;
 use shared::{
     Algorithm, DeleteResponse, ExpandInfo, Model, MyResult, QueryValuesResponse, RenameResponse,
 };
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicU64, RwLock};
 use tauri::AppHandle;
@@ -97,7 +97,7 @@ pub fn query_node(id: u64, state: tauri::State<RwLock<TauriState>>) -> MyResult<
     }
 }
 
-fn update_reference_count(models: &mut HashMap<u64, Model>) {
+fn update_reference_count(models: &mut BTreeMap<u64, Model>) {
     let mut reference_counts = models
         .iter()
         .map(|(id, _)| (*id, 0))
@@ -126,7 +126,7 @@ fn update_reference_count(models: &mut HashMap<u64, Model>) {
 fn replace_node_and_update_children(
     id: u64,
     new_id: Option<u64>,
-    models: &mut HashMap<u64, Model>,
+    models: &mut BTreeMap<u64, Model>,
 ) -> Result<HashSet<u64>, String> {
     println!("删除节点：{}", id);
     models
@@ -533,7 +533,7 @@ fn request_calculate_helper(
     // this function will be called recursively
     // do not modify the model's value directly, instead, store it in mem
     fn calculate(
-        models: &HashMap<u64, Model>,
+        models: &BTreeMap<u64, Model>,
         mem: &mut HashMap<u64, f64>,
         id: u64,
     ) -> Result<f64, String> {
@@ -614,6 +614,47 @@ pub fn query_values(
     let result = query_values_helper(ids, state);
     match result {
         Ok(values) => MyResult::Ok(values),
+        Err(e) => MyResult::Err(e),
+    }
+}
+
+fn request_template_generation_helper(app: AppHandle, state: tauri::State<RwLock<TauriState>>) -> Result<(), String> {
+    println!("Rust: request_template_generation called");
+    let state = state.read().unwrap();
+    let tree_model = state
+        .curr_tree_model
+        .as_ref()
+        .ok_or("模型未加载".to_string())?;
+    let models = &tree_model.models;
+    let mut file_data = FileData::new();
+    for (_id, model) in models.iter() {
+        if model.expand_info.is_none() {
+            file_data.insert(model.name.clone(), 0.0);
+        }
+    }
+    let file_data_str = serde_json::to_string(&file_data).unwrap();
+    let file_path = app
+    .dialog()
+    .file()
+    .set_file_name("template.json")
+    // .add_filter("My Filter", &["png", "jpeg"])
+    .blocking_save_file();
+    // write str to file path
+    let file_path = file_path
+        .map(|path| match path {
+            FilePath::Path(pathbuf) => pathbuf.to_string_lossy().to_string(),
+            FilePath::Url(url) => url.to_string(),
+        })
+        .ok_or("未选择文件".to_string())?;
+    std::fs::write(file_path, file_data_str).unwrap();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn request_template_generation(app: AppHandle, state: tauri::State<RwLock<TauriState>>) -> MyResult<(), String> {
+    let result = request_template_generation_helper(app, state);
+    match result {
+        Ok(_) => MyResult::Ok(()),
         Err(e) => MyResult::Err(e),
     }
 }

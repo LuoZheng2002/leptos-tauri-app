@@ -1,6 +1,6 @@
 use crate::models::{FileData, FileModel, FileTreeModel, TreeModel};
 use shared::{Algorithm, ExpandInfo, Model};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -39,7 +39,7 @@ pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
         });
     });
     // 转换模型，加入id
-    let mut models: HashMap<u64, Model> = name_to_id
+    let mut models: BTreeMap<u64, Model> = name_to_id
         .iter()
         .map(|(name, id)| match models.get(name) {
             Some(model) => {

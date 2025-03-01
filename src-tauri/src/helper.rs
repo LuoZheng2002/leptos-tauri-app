@@ -1,5 +1,5 @@
 use shared::Model;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub fn suggest_new_name_dupe(new_name: &str, models: &HashMap<String, Model>) -> String {
     let mut new_name = new_name.to_string();
@@ -8,7 +8,7 @@ pub fn suggest_new_name_dupe(new_name: &str, models: &HashMap<String, Model>) ->
     }
     new_name
 }
-pub fn suggest_new_name_add(models: &HashMap<u64, Model>) -> String {
+pub fn suggest_new_name_add(models: &BTreeMap<u64, Model>) -> String {
     let mut new_name = "新节点".to_string();
     let mut i = 0;
     let names = models

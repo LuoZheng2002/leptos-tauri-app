@@ -28,6 +28,7 @@ pub fn run() {
             request_save,
             request_calculate,
             query_values,
+            request_template_generation,
             log
         ])
         .run(tauri::generate_context!())
