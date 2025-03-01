@@ -23,8 +23,8 @@ pub struct TreeModel {
     pub counter: AtomicU64,
 }
 
-pub type FileData = HashMap<String, f64>;
-pub type Data = HashMap<u64, f64>;
+pub type FileData = BTreeMap<String, f64>;
+pub type Data = BTreeMap<u64, f64>;
 
 #[derive(Default)]
 pub struct TauriState {

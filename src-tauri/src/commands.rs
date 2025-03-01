@@ -2,6 +2,7 @@ use crate::helper::{suggest_new_name_add, suggest_new_name_dupe};
 use crate::loader::{load_data, load_models};
 use crate::models::{self, FileData, FileModel, FileTreeModel, TauriState, TreeModel};
 use crate::saver::save_models;
+use rand::Rng;
 use shared::{
     Algorithm, DeleteResponse, ExpandInfo, Model, MyResult, QueryValuesResponse, RenameResponse,
 };
@@ -31,13 +32,23 @@ pub fn select_file(app: AppHandle) -> MyResult<String, String> {
 }
 
 fn prepare_models_helper(
+    app: AppHandle,
     file_path: &str,
     state: tauri::State<RwLock<TauriState>>,
 ) -> Result<(), String> {
     println!("prepare_models called");
     let mut state = state.write().unwrap();
-
-    let tree_model = load_models(file_path)?;
+    // ask if the user wants to randomize algorithm
+    let randomize_algorithm = app
+        .dialog()
+        .message("是否随机化未定义的算法？（用于调试）")
+        .title("加载模型")
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "随机化".to_string(),
+            "不随机化".to_string(),
+        ))
+        .blocking_show();
+    let tree_model = load_models(file_path, randomize_algorithm)?;
     state.curr_file_path = Some(file_path.to_string());
     state.curr_tree_model = Some(tree_model);
     Ok(())
@@ -45,10 +56,11 @@ fn prepare_models_helper(
 
 #[tauri::command]
 pub fn prepare_models(
+    app: AppHandle,
     file_path: &str,
     state: tauri::State<RwLock<TauriState>>,
 ) -> MyResult<(), String> {
-    let result = prepare_models_helper(file_path, state);
+    let result = prepare_models_helper(app, file_path, state);
     match result {
         Ok(_) => MyResult::Ok(()),
         Err(e) => MyResult::Err(e),
@@ -627,12 +639,27 @@ fn request_template_generation_helper(app: AppHandle, state: tauri::State<RwLock
         .ok_or("模型未加载".to_string())?;
     let models = &tree_model.models;
     let mut file_data = FileData::new();
-    for (_id, model) in models.iter() {
-        if model.expand_info.is_none() {
-            file_data.insert(model.name.clone(), 0.0);
+    let answer = app.dialog()
+        .message("请选择模板类型")
+        .title("生成模板")
+        .buttons(MessageDialogButtons::OkCancelCustom("零初始化模板".to_string(), "随机初始化模板（调试）".to_string()))
+        .blocking_show();
+    if answer{
+        for (_id, model) in models.iter() {
+            if model.expand_info.is_none() {
+                file_data.insert(model.name.clone(), 0.0);
+            }
         }
     }
-    let file_data_str = serde_json::to_string(&file_data).unwrap();
+    else{
+        let mut rng = rand::rng();
+        for (_id, model) in models.iter() {
+            if model.expand_info.is_none() {
+                file_data.insert(model.name.clone(), rng.random());
+            }
+        }
+    }
+    let file_data_str = serde_json::to_string_pretty(&file_data).unwrap();
     let file_path = app
     .dialog()
     .file()

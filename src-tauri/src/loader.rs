@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
+pub fn load_models(file_path: &str, randomize_algorithm: bool) -> Result<TreeModel, String> {
     let counter = AtomicU64::new(0);
     // Reset counter
     counter.store(0, Ordering::Relaxed);
@@ -14,7 +14,7 @@ pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
         .map_err(|e| format!("解析模型文件{:?}错误\n{}", file_path, e))?;
     let models = file_tree_model.data;
     let root_name = file_tree_model.root_name;
-    let models: HashMap<String, FileModel> = models
+    let models: BTreeMap<String, FileModel> = models
         .into_iter()
         .map(|model| (model.name.clone(), model))
         .collect();
@@ -38,6 +38,7 @@ pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
                 .or_insert(counter.fetch_add(1, Ordering::Relaxed));
         });
     });
+    let mut rng = rand::rng();
     // 转换模型，加入id
     let mut models: BTreeMap<u64, Model> = name_to_id
         .iter()
@@ -56,7 +57,10 @@ pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
                     })
                     .collect();
                 let algorithm_str = model.algorithm.clone();
-                let algorithm_enum = algorithm_str.parse().unwrap_or(Algorithm::None);
+                let mut algorithm_enum = algorithm_str.parse().unwrap_or(Algorithm::None);
+                if matches!(algorithm_enum, Algorithm::None) && randomize_algorithm {
+                    algorithm_enum = Algorithm::random(&mut rng);
+                }
                 println!(
                     "字符串算法：{}, 枚举算法：{:?}",
                     algorithm_str, algorithm_enum
