@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-
-use rand::{rngs::ThreadRng, Rng};
 // the frontend model is a hashmap of unique_id: model (id, name, ref_count, children_names, algorithm)
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
@@ -53,14 +51,15 @@ impl Algorithm {
         result
     }
 
-    pub fn random(rng: &mut ThreadRng)->Self{
-        let algorithm = match rng.random_range(0..5) {
-            0 => Algorithm::None,
-            1 => Algorithm::Sum,
-            2 => Algorithm::Product,
-            3 => Algorithm::Average,
-            4 => Algorithm::Max,
-            5 => Algorithm::Min,
+    pub fn random(rand_num: f64)->Self{
+        let size = 5;
+        let index = ((rand_num * size as f64).floor() as usize).min(size - 1);
+        let algorithm = match index {
+            0 => Algorithm::Sum,
+            1 => Algorithm::Product,
+            2 => Algorithm::Average,
+            3 => Algorithm::Max,
+            4 => Algorithm::Min,
             _ => Algorithm::None,
         };
         algorithm

@@ -1,4 +1,5 @@
 use crate::models::{FileData, FileModel, FileTreeModel, TreeModel};
+use rand::Rng;
 use shared::{Algorithm, ExpandInfo, Model};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -59,7 +60,7 @@ pub fn load_models(file_path: &str, randomize_algorithm: bool) -> Result<TreeMod
                 let algorithm_str = model.algorithm.clone();
                 let mut algorithm_enum = algorithm_str.parse().unwrap_or(Algorithm::None);
                 if matches!(algorithm_enum, Algorithm::None) && randomize_algorithm {
-                    algorithm_enum = Algorithm::random(&mut rng);
+                    algorithm_enum = Algorithm::random(rng.random());
                 }
                 println!(
                     "字符串算法：{}, 枚举算法：{:?}",
@@ -70,7 +71,7 @@ pub fn load_models(file_path: &str, randomize_algorithm: bool) -> Result<TreeMod
                     name: model.name.clone(),
                     ref_count: 0,
                     expand_info: Some(ExpandInfo {
-                        algorithm: model.algorithm.parse().unwrap_or(Algorithm::None),
+                        algorithm: algorithm_enum,
                         children,
                     }),
                     value: None,
