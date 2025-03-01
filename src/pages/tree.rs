@@ -1,13 +1,15 @@
 use crate::app::invoke;
 use crate::components::tree_node::TreeNode;
 use crate::models::{LeptosContext, TreeNodeModel};
+use leptos::html::Q;
+use leptos::leptos_dom::logging::console_log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
 use leptos_router::NavigateOptions;
 use send_wrapper::SendWrapper;
-use serde_wasm_bindgen::from_value;
-use shared::{Algorithm, ExpandInfo, Model, MyResult};
+use serde_wasm_bindgen::{from_value, to_value};
+use shared::{Algorithm, ExpandInfo, Model, MyResult, QueryValuesArgs, QueryValuesResponse};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
@@ -77,6 +79,52 @@ pub fn Tree() -> impl IntoView {
         }
     };
 
+    let on_calculate = {
+        let leptos_context = leptos_context.clone();
+        move |_| {
+            let leptos_context = leptos_context.clone();
+            spawn_local(async move {
+                let mut context = leptos_context.lock().await;
+                let response = invoke("request_calculate", JsValue::NULL).await;
+                let response = from_value::<MyResult<(), String>>(response).unwrap();
+                match response {
+                    MyResult::Ok(_) => {
+                        context.err_msg.set("计算成功".to_string());
+                        let ids = context
+                            .models
+                            .iter()
+                            .map(|(id, _)| *id)
+                            .collect::<Vec<u64>>();
+                        let query_values_args = QueryValuesArgs { ids };
+                        let query_values_args = to_value(&query_values_args).unwrap();
+                        console_log("query values called on the frontend");
+                        let response = invoke("query_values", query_values_args).await;
+                        console_log(&format!("response: {:?}", response));
+                        let response =
+                            from_value::<MyResult<QueryValuesResponse, String>>(response).unwrap();
+                        match response {
+                            MyResult::Ok(query_values_response) => {
+                                let values = query_values_response
+                                    .values
+                                    .into_iter()
+                                    .map(|(id, value)| (id.parse().unwrap(), value))
+                                    .collect();
+                                context.update_values(&values);
+                                context.err_msg.set("数值已更新".to_string());
+                            }
+                            MyResult::Err(e) => {
+                                context.err_msg.set(format!("{}", e));
+                            }
+                        }
+                    }
+                    MyResult::Err(ref e) => {
+                        context.err_msg.set(format!("{}", e));
+                    }
+                }
+            });
+        }
+    };
+
     let root_resource = LocalResource::new({
         let leptos_context = leptos_context.clone();
         move || {
@@ -103,6 +151,12 @@ pub fn Tree() -> impl IntoView {
                 >
                     "返回"
                 </button>
+                <button
+                    on:click=on_calculate
+                    class="mx-3 px-4 py-2 bg-blue-600 text-white font-semibold rounded-2xl shadow-md hover:bg-blue-700 transition-all duration-200 ease-in-out active:scale-95"
+                >
+                    "选取数据文件并计算"
+                </button>
             </div>
             <h1 class="text-xl font-bold mb-4">"文件："{curr_file_path}</h1>
             <Suspense>
@@ -111,7 +165,7 @@ pub fn Tree() -> impl IntoView {
                     model.map(|model|{
                         let model = model.into_taken();
                         view! {
-                            <TreeNode tree_node_model=model/>
+                            <TreeNode tree_node_model=model parent=None/>
                         }
                     })
                 }}

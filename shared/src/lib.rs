@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 // the frontend model is a hashmap of unique_id: model (id, name, ref_count, children_names, algorithm)
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
@@ -23,6 +25,32 @@ pub enum Algorithm {
     #[strum(serialize = "取最小值")]
     // #[strum(serialize = "quzuixiaozhi")]
     Min,
+}
+
+impl Algorithm {
+    pub fn calculate(&self, data: &Vec<f64>) -> f64 {
+        let result = match self {
+            Algorithm::None => 0.0,
+            Algorithm::Sum => data.iter().sum(),
+            Algorithm::Product => data.iter().product(),
+            Algorithm::Average => {
+                if data.is_empty() {
+                    0.0
+                } else {
+                    data.iter().sum::<f64>() / data.len() as f64
+                }
+            }
+            Algorithm::Max => *data
+                .iter()
+                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap_or(&0.0),
+            Algorithm::Min => *data
+                .iter()
+                .min_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap_or(&0.0),
+        };
+        result
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -62,6 +90,12 @@ pub struct IdArgs {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DeleteArgs {
+    pub id: u64,
+    pub parent: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[allow(non_snake_case)]
 pub struct RenameArgs {
     pub id: u64,
@@ -79,7 +113,7 @@ pub enum RenameResponse {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DeleteResponse {
-    pub id_to_remove: u64,
+    pub id_to_remove: Option<u64>,
     pub ids_to_update: Vec<u64>,
 }
 
@@ -88,4 +122,15 @@ pub struct DeleteResponse {
 pub struct UpdateAlgorithmArgs {
     pub id: u64,
     pub newAlgorithm: Algorithm,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[allow(non_snake_case)]
+pub struct QueryValuesArgs {
+    pub ids: Vec<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct QueryValuesResponse {
+    pub values: HashMap<String, f64>,
 }

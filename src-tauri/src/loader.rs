@@ -1,4 +1,4 @@
-use crate::models::{FileModel, FileTreeModel, TreeModel};
+use crate::models::{FileData, FileModel, FileTreeModel, TreeModel};
 use shared::{Algorithm, ExpandInfo, Model};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -113,4 +113,12 @@ pub fn load_models(file_path: &str) -> Result<TreeModel, String> {
         root_name,
         counter,
     })
+}
+
+pub fn load_data(file_path: &str) -> Result<FileData, String> {
+    let content = fs::read_to_string(file_path)
+        .map_err(|e| format!("读取数据文件{:?}错误\n{}", file_path, e))?;
+    let file_data = serde_json::from_str::<FileData>(&content)
+        .map_err(|e| format!("解析数据文件{:?}错误\n{}", file_path, e))?;
+    Ok(file_data)
 }

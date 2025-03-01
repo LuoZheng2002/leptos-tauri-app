@@ -22,6 +22,10 @@ pub struct TreeModel {
     pub root_name: String,
     pub counter: AtomicU64,
 }
+
+pub type FileData = HashMap<String, f64>;
+pub type Data = HashMap<u64, f64>;
+
 #[derive(Default)]
 pub struct TauriState {
     pub curr_tree_model: Option<TreeModel>,

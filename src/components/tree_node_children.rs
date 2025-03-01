@@ -212,7 +212,7 @@ pub fn TreeNodeChildren(id: u64, expand_signal: ExpandSignal) -> impl IntoView {
                 each=move||children.get()
                 key=|(index, _model)| *index
                 children=move |(_id, model)| {
-                    view! { <TreeNode tree_node_model=model /> }.into_any()
+                    view! { <TreeNode tree_node_model=model parent=Some(id) /> }.into_any()
                 }
             />
 

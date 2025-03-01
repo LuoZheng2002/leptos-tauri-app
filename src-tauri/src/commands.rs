@@ -1,8 +1,10 @@
 use crate::helper::{suggest_new_name_add, suggest_new_name_dupe};
-use crate::loader::load_models;
-use crate::models::{FileModel, FileTreeModel, TauriState, TreeModel};
+use crate::loader::{load_data, load_models};
+use crate::models::{self, FileModel, FileTreeModel, TauriState, TreeModel};
 use crate::saver::save_models;
-use shared::{Algorithm, DeleteResponse, ExpandInfo, Model, MyResult, RenameResponse};
+use shared::{
+    Algorithm, DeleteResponse, ExpandInfo, Model, MyResult, QueryValuesResponse, RenameResponse,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicU64, RwLock};
@@ -210,10 +212,15 @@ pub fn request_rename(
 
 fn request_delete_helper(
     id: u64,
+    parent: Option<u64>,
     state: tauri::State<RwLock<TauriState>>,
 ) -> Result<DeleteResponse, String> {
-    println!("Rust: request_delete called with id: {}", id);
-    if id == 0 {
+    println!(
+        "Rust: request_delete called with id: {}, parent: {:?}",
+        id, parent
+    );
+    if parent.is_none() {
+        assert_eq!(id, 0);
         Err("根节点不可删除".to_string())?;
     }
     let mut state = state.write().unwrap();
@@ -222,19 +229,45 @@ fn request_delete_helper(
         .as_mut()
         .ok_or("模型未加载".to_string())?
         .models;
-    let ids_to_update = replace_node_and_update_children(id, None, models)?;
-    Ok(DeleteResponse {
-        id_to_remove: id,
-        ids_to_update: ids_to_update.into_iter().collect(),
-    })
+
+    // if the reference count is 1, we can delete the model, unless it is root
+    let model = models.get_mut(&id).ok_or(format!("未找到模型{}", id))?;
+    if model.ref_count == 1 && id != 0 {
+        let ids_to_update = replace_node_and_update_children(id, None, models)?;
+        Ok(DeleteResponse {
+            id_to_remove: Some(id),
+            ids_to_update: ids_to_update.into_iter().collect(),
+        })
+    } else {
+        let parent_model = models
+            .get_mut(&parent.unwrap())
+            .ok_or(format!("未找到模型{}", parent.unwrap()))?;
+        let parent_children = &mut parent_model
+            .expand_info
+            .as_mut()
+            .ok_or("父节点无子节点".to_string())?
+            .children;
+        parent_children.remove(
+            parent_children
+                .iter()
+                .position(|x| *x == id)
+                .ok_or("未找到要删除的模型")?,
+        );
+        update_reference_count(models);
+        Ok(DeleteResponse {
+            id_to_remove: None,
+            ids_to_update: vec![parent.unwrap(), id],
+        })
+    }
 }
 
 #[tauri::command]
 pub fn request_delete(
     id: u64,
+    parent: Option<u64>,
     state: tauri::State<RwLock<TauriState>>,
 ) -> MyResult<DeleteResponse, String> {
-    let result = request_delete_helper(id, state);
+    let result = request_delete_helper(id, parent, state);
     match result {
         Ok(id) => MyResult::Ok(id),
         Err(e) => MyResult::Err(e),
@@ -441,7 +474,7 @@ fn request_save_helper(state: tauri::State<RwLock<TauriState>>) -> Result<(), St
         .into_iter()
         .map(|(_id, file_model)| file_model)
         .collect::<Vec<_>>();
-    let file_tree_model = FileTreeModel{
+    let file_tree_model = FileTreeModel {
         root_name,
         data: file_models,
     };
@@ -454,6 +487,133 @@ pub fn request_save(state: tauri::State<RwLock<TauriState>>) -> MyResult<(), Str
     let result = request_save_helper(state);
     match result {
         Ok(_) => MyResult::Ok(()),
+        Err(e) => MyResult::Err(e),
+    }
+}
+
+fn request_calculate_helper(
+    app: AppHandle,
+    state: tauri::State<RwLock<TauriState>>,
+) -> Result<(), String> {
+    println!("Rust: request_calculate called");
+    let file_path = app.dialog().file().blocking_pick_file();
+    let file_path = file_path
+        .map(|path| match path {
+            FilePath::Path(pathbuf) => pathbuf.to_string_lossy().to_string(),
+            FilePath::Url(url) => url.to_string(),
+        })
+        .ok_or("未选择文件".to_string())?;
+    let file_data = load_data(&file_path)?;
+    let mut state = state.write().unwrap();
+    let tree_model = state
+        .curr_tree_model
+        .as_ref()
+        .ok_or("模型未加载".to_string())?;
+    let models = &tree_model.models;
+    let name_to_id = models
+        .iter()
+        .filter(|(_name, model)| model.expand_info.is_none())
+        .map(|(id, model)| (model.name.clone(), *id))
+        .collect::<HashMap<String, u64>>();
+    let required_names = name_to_id
+        .iter()
+        .map(|(name, _id)| name.clone())
+        .collect::<HashSet<String>>();
+    for required_name in required_names.iter() {
+        if !file_data.contains_key(required_name) {
+            Err(format!("计算失败：文件中缺少数据{}", required_name))?;
+        }
+    }
+    // create a dynamic programming mem for calculation
+    let mut mem = HashMap::<u64, f64>::new();
+    for (name, id) in name_to_id.iter() {
+        mem.insert(*id, file_data.get(name).unwrap().clone());
+    }
+    // create a helper function for calculating a node's value based on its childrens'
+    // this function will be called recursively
+    // do not modify the model's value directly, instead, store it in mem
+    fn calculate(
+        models: &HashMap<u64, Model>,
+        mem: &mut HashMap<u64, f64>,
+        id: u64,
+    ) -> Result<f64, String> {
+        if let Some(value) = mem.get(&id) {
+            return Ok(*value);
+        }
+        let model = models
+            .get(&id)
+            .ok_or(format!("计算失败：未找到模型{}", id))?;
+        let expand_info = model
+            .expand_info
+            .as_ref()
+            .ok_or("计算失败：模型既无子节点也没有现成的值".to_string())?;
+        let mut children_values = vec![];
+        for child_id in expand_info.children.iter() {
+            children_values.push(calculate(models, mem, *child_id)?);
+        }
+        let algorithm = expand_info.algorithm.clone();
+        if let Algorithm::None = algorithm {
+            println!("计算失败：模型{}的算法为None", id);
+            Err(format!("计算失败：模型{}的算法为None", id))?;
+        }
+        let value = algorithm.calculate(&children_values);
+        println!("计算了{}的值：{}", id, value);
+        mem.insert(id, value);
+        Ok(value)
+    }
+    let _ = calculate(models, &mut mem, 0)?;
+    // update the model's value
+    let models = &mut state.curr_tree_model.as_mut().unwrap().models;
+    for (id, value) in mem.iter() {
+        let model = models
+            .get_mut(id)
+            .ok_or(format!("计算失败：未找到模型{}", id))?;
+        model.value = Some(*value);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn request_calculate(
+    app: AppHandle,
+    state: tauri::State<RwLock<TauriState>>,
+) -> MyResult<(), String> {
+    let result = request_calculate_helper(app, state);
+    println!("request_calculate result: {:?}", result);
+    match result {
+        Ok(_) => MyResult::Ok(()),
+        Err(e) => MyResult::Err(e),
+    }
+}
+
+fn query_values_helper(
+    ids: Vec<u64>,
+    state: tauri::State<RwLock<TauriState>>,
+) -> Result<QueryValuesResponse, String> {
+    println!("Rust: query_values called");
+    let state = state.read().unwrap();
+    let models = &state
+        .curr_tree_model
+        .as_ref()
+        .ok_or("模型未加载".to_string())?
+        .models;
+    let mut values = HashMap::new();
+    for id in ids.iter() {
+        let model = models.get(id).ok_or(format!("未找到模型{}", id))?;
+        let value = model.value.ok_or(format!("模型{}的值未计算", id))?;
+        values.insert(id.to_string(), value);
+    }
+    Ok(QueryValuesResponse { values })
+}
+
+#[tauri::command]
+pub fn query_values(
+    ids: Vec<u64>,
+    state: tauri::State<RwLock<TauriState>>,
+) -> MyResult<QueryValuesResponse, String> {
+    let result = query_values_helper(ids, state);
+    match result {
+        Ok(values) => MyResult::Ok(values),
         Err(e) => MyResult::Err(e),
     }
 }

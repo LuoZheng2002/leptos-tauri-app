@@ -1,5 +1,0 @@
-{
-    "name": "A",
-    "children": ["B", "C"],
-    "algorithm": "算法A"
-}

@@ -89,4 +89,11 @@ impl LeptosContext {
             }
         }
     }
+    pub fn update_values(&mut self, values: &HashMap<u64, f64>) {
+        for (id, value) in values {
+            if let Some(model) = self.models.get_mut(id) {
+                model.value.set(Some(*value));
+            }
+        }
+    }
 }

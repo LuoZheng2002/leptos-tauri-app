@@ -1,0 +1,24 @@
+{
+    "root_name": "Root",
+    "data": [
+        {
+            "name": "Root",
+            "children": [
+                "A",
+                "B",
+                "C",
+                "D"
+            ],
+            "algorithm": "取最小值"
+        },
+        {
+            "name": "A",
+            "children": [
+                "A1",
+                "A2",
+                "A3"
+            ],
+            "algorithm": "取最大值"
+        }
+    ]
+}

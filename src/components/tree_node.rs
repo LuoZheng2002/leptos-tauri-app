@@ -15,12 +15,12 @@ use leptos::{
 use leptos_icons::Icon;
 use serde::de::value;
 use serde_wasm_bindgen::{from_value, to_value};
-use shared::{DeleteResponse, IdArgs, MyResult, RenameArgs, RenameResponse};
+use shared::{DeleteArgs, DeleteResponse, IdArgs, MyResult, RenameArgs, RenameResponse};
 use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
 
 #[component]
-pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
+pub fn TreeNode(tree_node_model: TreeNodeModel, parent: Option<u64>) -> impl IntoView {
     let leptos_context = use_context::<Arc<Mutex<LeptosContext>>>().unwrap();
 
     let TreeNodeModel {
@@ -110,16 +110,18 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
                 if !context.models.contains_key(&id) {
                     return;
                 }
-                let id_args = IdArgs { id };
-                let id_args = to_value(&id_args).unwrap();
-                let response = invoke("request_delete", id_args).await;
+                let delete_args = DeleteArgs { id, parent };
+                let delete_args = to_value(&delete_args).unwrap();
+                let response = invoke("request_delete", delete_args).await;
                 let response = from_value::<MyResult<DeleteResponse, String>>(response).unwrap();
                 match response {
                     MyResult::Ok(DeleteResponse {
                         id_to_remove,
                         ids_to_update,
                     }) => {
-                        context.models.remove(&id_to_remove);
+                        if let Some(id_to_remove) = id_to_remove {
+                            context.models.remove(&id_to_remove);
+                        }
                         for parent in ids_to_update {
                             if context.models.contains_key(&parent) {
                                 context.update_model(parent).await;
@@ -238,12 +240,16 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
                     Either::Right(
                         view! {
                             <span on:dblclick=set_editing_true>{name}</span>
-                            <span class="ml-3">"id: "{id}</span>
+                            <span class="ml-3 text-gray-500">"id: "{id}</span>
                         },
                     )
                 }
             }} // {/* Delete Button */}
-
+            {
+                move || value.get().map(|value| {
+                    view! { <span class="ml-3 text-green-500 hover:text-green-300">"计算结果："{value}</span> }
+                })
+            }
             <div class="ml-auto">
                 <button
                     class="text-blue-500 hover:text-blue-700 mr-3"
@@ -257,6 +263,7 @@ pub fn TreeNode(tree_node_model: TreeNodeModel) -> impl IntoView {
                         }
                     }}
                 </button>
+
                 <div class="inline-block mr-3">"引用计数："{ref_count}</div>
                 <button class="text-red-500 hover:text-red-700" on:click=on_delete>
                     <Icon width="16" height="16" icon=icondata::LuTrash />

@@ -4,8 +4,8 @@ use std::sync::RwLock;
 pub mod commands;
 pub mod helper;
 pub mod loader;
-pub mod saver;
 pub mod models;
+pub mod saver;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,6 +26,8 @@ pub fn run() {
             request_update_algorithm,
             request_can_expand_toggling,
             request_save,
+            request_calculate,
+            query_values,
             log
         ])
         .run(tauri::generate_context!())
